@@ -1,0 +1,436 @@
+{
+  "suite": "RSO-2026 IT troubleshooting benchmark",
+  "suite_version": 1,
+  "seed": 2026,
+  "question_count": 10,
+  "average_faithfulness_score": 0.9189,
+  "average_context_precision": 0.9333,
+  "average_expected_fact_coverage": 0.3371,
+  "average_tokens_per_second": 9.7611,
+  "evolution_score": 0.7298,
+  "total_runtime_seconds": 289.686,
+  "runs": [
+    {
+      "id": "ad_password_lockout_reset",
+      "question": "A user forgot their password and is currently locked out. What exact Active Directory steps should the helpdesk take, and what password and lockout policy facts should they keep in mind?",
+      "faithfulness_score": 1.0,
+      "context_precision": 1.0,
+      "expected_fact_coverage": 0.5556,
+      "tokens_per_second": 11.4385,
+      "output_tokens": 224,
+      "latency_seconds": 59.7545,
+      "correction_rounds": 2,
+      "sources": [
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 0,
+          "score": 0.7604,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide\n\n# Active Directo..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 4,
+          "score": 0.6602,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > Password Reset ..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 2,
+          "score": 0.6404,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > Password Reset ..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 1,
+          "score": 0.6282,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > Password Reset ..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 3,
+          "score": 0.5986,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > Password Reset ..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 7,
+          "score": 0.55,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > User Account Pr..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 5,
+          "score": 0.5249,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > User Account Pr..."
+        }
+      ],
+      "answer": "To reset a password that the user is locked out of Active Directory, here's what the helpdesk should do: Open the user account by clicking on their name (or log in if you're not logged into their account). Click on \"Forgot password\" located at the bottom left corner of the screen. Select the option to reset your password from the dropdown menu. Follow the prompts to enter your username and confirm the password. If successful, a confirmation message will be sent back to the helpdesk with a new password for the reset. The helpdesk can then proceed with the next step based on this new password. To prevent future users from being locked out, make sure the following facts about the system and network remain unchanged: User accounts must have at least 90 days' access time before they expire. The system must allow for automatic renewal of all passwords after a certain period. Network administrators must use a strong password policy that includes complexity requirements like alphanumeric characters and special symbols. All passwords stored on the system must be encrypted and only authorized personnel should have physical access to them."
+    },
+    {
+      "id": "vpn_dns_internal_resolution",
+      "question": "A remote employee is connected to VPN but cannot resolve intranet.company.com. What should they try, what DNS servers should the VPN supply, and what temporary workaround is documented?",
+      "faithfulness_score": 0.875,
+      "context_precision": 1.0,
+      "expected_fact_coverage": 0.375,
+      "tokens_per_second": 10.3162,
+      "output_tokens": 216,
+      "latency_seconds": 21.0064,
+      "correction_rounds": 0,
+      "sources": [
+        {
+          "file": "vpn_setup.md",
+          "chunk": 7,
+          "score": 0.7156,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Troubleshooting Common..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 6,
+          "score": 0.5095,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Troubleshooting Common..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 3,
+          "score": 0.4928,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Split Tunnel Configura..."
+        }
+      ],
+      "answer": "To troubleshoot slow VPN performance, I would recommend trying the following steps: Open a Command Prompt and type `ipconfig /flushdns` to clear any cached DNS records from the system cache. This will ensure that the VPN's DNS server configuration takes effect immediately. Run `nslookup intranet.company.com` to verify if DNS resolution is still possible. If it fails, this indicates that the VPN has configured its own DNS servers instead of relying on external DNS providers like Google Public DNS or Verizon Internet Connection Sharing (VISCNS) DNS. Disconnect and reconnect the VPN connection to see if the issue persists. If it does, then the problem lies with the VPN itself, possibly due to issues such as firewall blocking or incorrect settings. A temporary solution could be adding the following lines to your hosts file at C:\\Windows\\System32\\drivers\\etc\\hosts: This tells Windows which domain name resolves to www.google.com when accessed through the VPN. For more reliable solutions, consider configuring the VPN to use external DNS services."
+    },
+    {
+      "id": "workstation_domain_join_failure",
+      "question": "During imaging, a new workstation fails to join the domain. What network, AD, DNS, SCCM, and manual domain-join details from the documentation are relevant?",
+      "faithfulness_score": 1.0,
+      "context_precision": 1.0,
+      "expected_fact_coverage": 0.0,
+      "tokens_per_second": 3.9906,
+      "output_tokens": 17,
+      "latency_seconds": 4.2958,
+      "correction_rounds": 0,
+      "sources": [
+        {
+          "file": "workstation_setup.md",
+          "chunk": 11,
+          "score": 0.8243,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Troubleshooting New Workst..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 2,
+          "score": 0.6056,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 4,
+          "score": 0.5776,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        }
+      ],
+      "answer": "Manual domain-join details: 10.0.1.11"
+    },
+    {
+      "id": "slow_vpn_performance",
+      "question": "A user reports slow VPN while doing video meetings. What bandwidth targets, diagnostic step, workload changes, and split-tunnel facts should support troubleshooting?",
+      "faithfulness_score": 0.7143,
+      "context_precision": 1.0,
+      "expected_fact_coverage": 0.5,
+      "tokens_per_second": 8.5817,
+      "output_tokens": 165,
+      "latency_seconds": 63.0905,
+      "correction_rounds": 2,
+      "sources": [
+        {
+          "file": "vpn_setup.md",
+          "chunk": 6,
+          "score": 0.6725,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Troubleshooting Common..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 5,
+          "score": 0.4973,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Troubleshooting Common..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 3,
+          "score": 0.4784,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Split Tunnel Configura..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 4,
+          "score": 0.4027,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Troubleshooting Common..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 0,
+          "score": 0.3974,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide\n\n# VPN Configuration and..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 1,
+          "score": 0.3553,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Initial VPN Setup\n\n## ..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 7,
+          "score": 0.3297,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Troubleshooting Common..."
+        }
+      ],
+      "answer": "**Minimum Recommended Bandwidth**: Check if minimum recommended bandwidths (e.g., 10Mbps) are being reached by checking with speedtest.net or similar service providers. **Download Speed**: Ensure that the VPN client can successfully connect to the server even after reaching its configured maximum throughput. This might be due to multiple concurrent connections or incorrect configuration settings. **Upload Speed**: Verify that the VPN client can maintain sufficient upload speeds without affecting other aspects of the network. **Workload Changes**: Monitor network utilization patterns during video meetings. If there's high traffic from another application, it could affect overall network performance. Split-tunneling techniques can help distribute workloads more evenly across the VPN connection. By examining these factors, users can pinpoint potential issues contributing to their slow VPN performance while conducting video meetings."
+    },
+    {
+      "id": "new_user_provisioning_full",
+      "question": "For a newly hired employee, summarize the account provisioning tasks and the workstation post-imaging tasks that must happen before handoff.",
+      "faithfulness_score": 1.0,
+      "context_precision": 1.0,
+      "expected_fact_coverage": 0.0,
+      "tokens_per_second": 12.1195,
+      "output_tokens": 86,
+      "latency_seconds": 7.1289,
+      "correction_rounds": 0,
+      "sources": [
+        {
+          "file": "workstation_setup.md",
+          "chunk": 3,
+          "score": 0.4422,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 2,
+          "score": 0.426,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 10,
+          "score": 0.4114,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Security Baseline\n\ndevice ..."
+        }
+      ],
+      "answer": "For new employees, they need to follow these steps for account provisioning and workstation setup after image completion: Account Provisioning (steps 2-7) - This involves configuring user accounts, setting up security settings, and installing necessary software on the workstations. Post-Imaging Configuration (steps 8-9) - This is where you configure the workstations with their respective operating systems and other necessary configurations."
+    },
+    {
+      "id": "printer_missing_after_setup",
+      "question": "A network printer did not appear automatically on a new user's workstation. What deployment mechanism, manual add path, inventory source, and driver location should the technician use?",
+      "faithfulness_score": 0.8,
+      "context_precision": 1.0,
+      "expected_fact_coverage": 0.3333,
+      "tokens_per_second": 8.3535,
+      "output_tokens": 38,
+      "latency_seconds": 24.9117,
+      "correction_rounds": 2,
+      "sources": [
+        {
+          "file": "workstation_setup.md",
+          "chunk": 6,
+          "score": 0.723,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Printer Setup\n\n## Printer ..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 5,
+          "score": 0.6551,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 1,
+          "score": 0.5202,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 2,
+          "score": 0.4315,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 3,
+          "score": 0.4271,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 9,
+          "score": 0.4266,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Security Baseline\n\nEvery w..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 4,
+          "score": 0.4149,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        }
+      ],
+      "answer": "Network printer setup Manual add path (add printer) TCP/IP address from the printer inventory spreadsheet (printer name in SharePoint) Driver package for the printer at \\\\printserver\\drivers"
+    },
+    {
+      "id": "sccm_apps_available_not_installing",
+      "question": "Software Center shows assigned applications as Available but they are not installing. What service, logs, OU or collection checks, and reinstall command sequence should be used?",
+      "faithfulness_score": 1.0,
+      "context_precision": 0.6667,
+      "expected_fact_coverage": 0.5714,
+      "tokens_per_second": 11.0607,
+      "output_tokens": 61,
+      "latency_seconds": 5.557,
+      "correction_rounds": 0,
+      "sources": [
+        {
+          "file": "workstation_setup.md",
+          "chunk": 12,
+          "score": 0.5775,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Troubleshooting New Workst..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 4,
+          "score": 0.3521,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Operating System Deploymen..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 8,
+          "score": 0.3076,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > Group Policy Ov..."
+        }
+      ],
+      "answer": "Logs at C:\\Windows\\CCM\\Logs - This will provide detailed error information about why software was installed incorrectly. Ensure the user has permission to access the necessary collections and OUs on the workstation. Remove and reinstall the SCCM client following the steps outlined in the document."
+    },
+    {
+      "id": "vpn_timeout_public_wifi",
+      "question": "A laptop on public Wi-Fi gets VPN connection timeouts. What ordered checks and AnyConnect preference are documented, and what traffic must the firewall allow to the concentrator?",
+      "faithfulness_score": 0.8,
+      "context_precision": 1.0,
+      "expected_fact_coverage": 0.2857,
+      "tokens_per_second": 7.6326,
+      "output_tokens": 58,
+      "latency_seconds": 16.7664,
+      "correction_rounds": 1,
+      "sources": [
+        {
+          "file": "vpn_setup.md",
+          "chunk": 4,
+          "score": 0.5423,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Troubleshooting Common..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 6,
+          "score": 0.4885,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Troubleshooting Common..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 2,
+          "score": 0.4778,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Initial VPN Setup > Fi..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 3,
+          "score": 0.4528,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide > Split Tunnel Configura..."
+        },
+        {
+          "file": "vpn_setup.md",
+          "chunk": 0,
+          "score": 0.4485,
+          "preview": "Document: vpn_setup.md\nSection: VPN Configuration and Troubleshooting Guide\n\n# VPN Configuration and..."
+        }
+      ],
+      "answer": "Verify internet connection works by checking if you can browse any websites online without issues. Check VPN gateway address for correct configuration. Disconnect from Wi-Fi network before re-establishing VPN connection. Use AnyConnect \"Allow local LAN access\" option instead of VPN settings in Preferences."
+    },
+    {
+      "id": "wireless_guest_isolation",
+      "question": "Explain how corporate, guest, and IoT wireless access differ, including authentication, isolation, VLAN, controllers, and access point models.",
+      "faithfulness_score": 1.0,
+      "context_precision": 1.0,
+      "expected_fact_coverage": 0.5,
+      "tokens_per_second": 12.2135,
+      "output_tokens": 162,
+      "latency_seconds": 13.308,
+      "correction_rounds": 0,
+      "sources": [
+        {
+          "file": "network_infrastructure.md",
+          "chunk": 5,
+          "score": 0.6114,
+          "preview": "Document: network_infrastructure.md\nSection: Network Infrastructure Documentation > Wireless Network..."
+        },
+        {
+          "file": "network_infrastructure.md",
+          "chunk": 2,
+          "score": 0.3824,
+          "preview": "Document: network_infrastructure.md\nSection: Network Infrastructure Documentation > IP Addressing Sc..."
+        },
+        {
+          "file": "network_infrastructure.md",
+          "chunk": 0,
+          "score": 0.338,
+          "preview": "Document: network_infrastructure.md\nSection: Network Infrastructure Documentation\n\n# Network Infrast..."
+        }
+      ],
+      "answer": "Here's a concise explanation of the differences between corporate, guest, and IoT wireless networks: **Authentication**: Corporate network requires AD credentials to connect, while guest network does not require AD credentials but has no password protection. IoT network uses WPA2-PSK without any password or CAPTCHA. **Isolation**: Guest network is isolated on separate VLANs, allowing it to communicate only with other guests. The corporate network connects all devices directly through the access points. **Controller Model**: All three networks use the same controller model, but they have different configurations. The corporate network uses a single, high-end controller that supports multiple access points. The guest network uses two, lower-end controllers that support fewer access points. The IoT network uses one low-end controller that supports minimal connectivity."
+    },
+    {
+      "id": "offboarding_policy_gpo_audit",
+      "question": "When offboarding an employee, what should happen to their AD account, groups, email, deletion timing, and what GPO troubleshooting command/order might help audit workstation policy state?",
+      "faithfulness_score": 1.0,
+      "context_precision": 0.6667,
+      "expected_fact_coverage": 0.25,
+      "tokens_per_second": 11.9043,
+      "output_tokens": 325,
+      "latency_seconds": 73.8604,
+      "correction_rounds": 2,
+      "sources": [
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 7,
+          "score": 0.5246,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > User Account Pr..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 8,
+          "score": 0.4892,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > Group Policy Ov..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 9,
+          "score": 0.3661,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Security Baseline\n\nEvery w..."
+        },
+        {
+          "file": "workstation_setup.md",
+          "chunk": 10,
+          "score": 0.3482,
+          "preview": "Document: workstation_setup.md\nSection: New Workstation Setup Procedure > Security Baseline\n\ndevice ..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 4,
+          "score": 0.3413,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > Password Reset ..."
+        },
+        {
+          "file": "active_directory_guide.md",
+          "chunk": 5,
+          "score": 0.3085,
+          "preview": "Document: active_directory_guide.md\nSection: Active Directory Administration Guide > User Account Pr..."
+        }
+      ],
+      "answer": "To disable an employee's AD account after they leave the organization, you need to follow these steps in a specific order: Create a new user account with the same name and role in your domain. This will prevent accidental changes or deletions from occurring on other users' systems during the transition period. Log into the newly created user account with the password you want to use when creating policies later. Open the Group Policies Assistant by right-clicking Administrative Tools > Group Policies Assistant and selecting New Group Policy Element. Set the element type to \"Domain\". Navigate to the \"Users & Computers\" tab and click on \"Delete\". Select the user account that needs to be disabled, then click on \"OK\". Right-click on the user account, select \"Properties\", and under \"Privileges\", set the privilege level to \"None\". Click on \"Apply\" to save the change. Now, this account is no longer editable, but it remains accessible through network shares until it is removed from the local computer. To remove it from the computer, right-click on the account in the list of users and administrators, select \"Remove user/group\", then confirm the action. For more detailed instructions and options available in Microsoft Help and Support, please refer to the [Active Directory Account Management guide](https://support.microsoft.com/en-us/help/851235/active-directory-account-management). Note: If you encounter any issues while removing the account from the computer, ensure that the system administrator has access to the necessary permissions and tools to complete the removal successfully."
+    }
+  ]
+}

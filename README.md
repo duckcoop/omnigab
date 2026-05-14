@@ -31,66 +31,76 @@ Before you start, make sure you have these two things installed:
 
 ---
 
-## Setup (5 minutes)
+## Setup
 
-### Step 1: Download the project
+Everything you need is already in this repo (source code, sample documents, config). The only thing that can't be included is the AI model file because it's 1.1 GB and GitHub has a 100 MB file limit.
 
-**Option A** (with Git):
-```
-git clone https://github.com/duckcoop/local-rag-agent.git
-cd local-rag-agent
-```
+You have two options to get set up:
 
-**Option B** (without Git): Click the green **Code** button on GitHub, click **Download ZIP**, extract it, and open the folder.
+### Option A: Run the setup script (recommended)
 
-### Step 2: Run the setup script
+This handles everything automatically: creates a virtual environment, installs Python packages, and downloads the AI model for you.
 
-Open **PowerShell** inside the project folder (right-click in the folder > "Open in Terminal" or "Open PowerShell window here") and run:
+1. Download the project: click the green **Code** button above, then **Download ZIP**. Extract it and open the folder. (Or `git clone https://github.com/duckcoop/local-rag-agent.git` if you have Git.)
+
+2. Open **PowerShell** in the project folder (right-click in the folder > "Open in Terminal") and run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\setup_rag.ps1
 ```
 
-It will ask you to confirm the execution policy change. Type **Y** and press Enter. This only affects the current window and resets when you close it.
-
-The script will:
-1. Create a Python virtual environment
-2. Install all dependencies (this takes a few minutes, PyTorch is a large download)
-3. Verify that the AI model library installed correctly
-4. Download the language model if it's not already present (~1.1 GB)
+It will ask you to confirm. Type **Y** and press Enter. This only affects the current window.
 
 **Prefer Command Prompt?** Run `setup_rag.bat` instead. Same thing, no PowerShell needed.
 
-**Want more detail?** See the full [Setup Guide](SETUP_GUIDE.md) for manual model downloads, upgrading to larger models, and CPU tuning.
+### Option B: Set it up manually
 
-### Step 3: Add your documents
+If you don't want to run a script, you can do each step yourself:
+
+1. Download and extract the project (same as above).
+
+2. Open a terminal in the project folder and create a virtual environment:
+```
+python -m venv venv
+```
+
+3. Activate it:
+    - **PowerShell:** `.\venv\Scripts\Activate.ps1`
+    - **Command Prompt:** `venv\Scripts\activate.bat`
+
+4. Install dependencies:
+```
+pip install -r requirements.txt
+```
+
+5. Download the AI model (~1.1 GB). Pick one:
+    - **From the command line:**
+      ```
+      pip install huggingface-hub
+      huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir models/
+      ```
+    - **From your browser:** Go to [huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF), click **Files and versions**, find `qwen2.5-1.5b-instruct-q4_k_m.gguf`, download it, and put it in the `models/` folder.
+
+For more detail on model options and CPU tuning, see the [Setup Guide](SETUP_GUIDE.md).
+
+### Add your documents
 
 Put the files you want to search through into the `data/docs/` folder. Supported file types: `.txt`, `.md`, `.pdf`, `.json`, `.yaml`, `.yml`, `.csv`, `.log`, `.cfg`, `.ini`
 
-Some sample IT documentation is included so you can test right away without adding your own files.
+Some sample IT documentation is already included so you can test right away.
 
-### Step 4: Run it
+### Run it
 
-Activate the virtual environment and run the two commands:
+Make sure your virtual environment is activated (you should see `(venv)` in your prompt), then:
 
-**PowerShell:**
-```powershell
-.\venv\Scripts\Activate.ps1
+```
 cd src
 python rag_agent.py ingest
 python rag_agent.py query
 ```
 
-**Command Prompt:**
-```cmd
-venv\Scripts\activate.bat
-cd src
-python rag_agent.py ingest
-python rag_agent.py query
-```
-
-The `ingest` command reads your documents and builds the search index. You only need to run it again when you add or change documents.
+The `ingest` command reads your documents and builds the search index. Run it again whenever you add or change documents.
 
 The `query` command opens an interactive chat. Ask a question, get an answer sourced from your files. Type `quit` to exit.
 

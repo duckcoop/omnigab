@@ -1,0 +1,10 @@
+torch>=2.0.0
+transformers>=4.40.0
+sentence-transformers>=3.0.0
+faiss-cpu>=1.7.0
+langchain-text-splitters>=0.2.0
+numpy>=1.24.0
+accelerate>=0.30.0
+llama-cpp-python>=0.3.0
+colorama>=0.4.6
+rich>=13.0.0

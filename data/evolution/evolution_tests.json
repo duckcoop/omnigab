@@ -1,0 +1,176 @@
+{
+  "suite": "RSO-2026 IT troubleshooting benchmark",
+  "version": 1,
+  "tests": [
+    {
+      "id": "ad_password_lockout_reset",
+      "question": "A user forgot their password and is currently locked out. What exact Active Directory steps should the helpdesk take, and what password and lockout policy facts should they keep in mind?",
+      "expected": {
+        "source_files": ["active_directory_guide.md"],
+        "facts": [
+          "Open Active Directory Users and Computers or run dsa.msc.",
+          "Most user accounts are in the Corporate Users OU.",
+          "Right-click the account and select Reset Password.",
+          "Enter the new temporary password in both fields.",
+          "Check User must change password at next logon.",
+          "Uncheck Account is locked out on the Account tab if the account was locked.",
+          "Passwords require at least 14 characters with uppercase, lowercase, numbers, and special characters.",
+          "Account lockout occurs after 5 failed login attempts within a 30-minute window.",
+          "Lockout duration is 30 minutes."
+        ]
+      }
+    },
+    {
+      "id": "vpn_dns_internal_resolution",
+      "question": "A remote employee is connected to VPN but cannot resolve intranet.company.com. What should they try, what DNS servers should the VPN supply, and what temporary workaround is documented?",
+      "expected": {
+        "source_files": ["vpn_setup.md", "network_infrastructure.md"],
+        "facts": [
+          "Run ipconfig /flushdns.",
+          "Run nslookup intranet.company.com to test DNS resolution.",
+          "The VPN should configure DNS servers automatically.",
+          "The DNS server addresses are 10.0.1.10 and 10.0.1.11.",
+          "Disconnect and reconnect the VPN if DNS is not working.",
+          "As a workaround, manually add DNS entries in C:\\Windows\\System32\\drivers\\etc\\hosts.",
+          "Internal DNS zones are hosted on the domain controllers.",
+          "The primary internal DNS zone is company.local."
+        ]
+      }
+    },
+    {
+      "id": "workstation_domain_join_failure",
+      "question": "During imaging, a new workstation fails to join the domain. What network, AD, DNS, SCCM, and manual domain-join details from the documentation are relevant?",
+      "expected": {
+        "source_files": ["workstation_setup.md", "network_infrastructure.md"],
+        "facts": [
+          "Verify the Ethernet cable is connected.",
+          "Verify the workstation has received a DHCP address.",
+          "Check that the computer account does not already exist in AD.",
+          "The computer account may need to be deleted or reset.",
+          "Verify DNS settings point to domain controllers 10.0.1.10 and 10.0.1.11.",
+          "Try manually joining the domain through System Properties.",
+          "Enter company.local as the domain name.",
+          "The workstation connects to the SCCM deployment server at 10.0.5.50 during imaging."
+        ]
+      }
+    },
+    {
+      "id": "slow_vpn_performance",
+      "question": "A user reports slow VPN while doing video meetings. What bandwidth targets, diagnostic step, workload changes, and split-tunnel facts should support troubleshooting?",
+      "expected": {
+        "source_files": ["vpn_setup.md"],
+        "facts": [
+          "Minimum recommended bandwidth is 10 Mbps download and 5 Mbps upload.",
+          "For video conferencing over VPN, 25 Mbps download is recommended.",
+          "Check internet speed at speedtest.net.",
+          "Close bandwidth-heavy applications.",
+          "Consider using web versions of applications when possible.",
+          "The VPN uses split tunneling.",
+          "Only traffic destined for company resources goes through the VPN tunnel.",
+          "Internet traffic goes directly through the user's local internet connection."
+        ]
+      }
+    },
+    {
+      "id": "new_user_provisioning_full",
+      "question": "For a newly hired employee, summarize the account provisioning tasks and the workstation post-imaging tasks that must happen before handoff.",
+      "expected": {
+        "source_files": ["active_directory_guide.md", "workstation_setup.md"],
+        "facts": [
+          "Create the AD user in the appropriate OU based on department.",
+          "Use the user logon name format first.last@company.com.",
+          "Add the user to role-appropriate security groups.",
+          "Standard groups include Domain Users, VPN Users, and the department-specific group.",
+          "Create a home folder at \\\\fileserver\\users\\username and set NTFS permissions.",
+          "Assign a Microsoft 365 license through the admin portal.",
+          "Verify the workstation has joined the domain.",
+          "Run Windows Update after imaging.",
+          "Configure Outlook using the user's email address and Autodiscover.",
+          "Map H:, S:, and P: network drives to the documented file shares.",
+          "Set the default printer for the user's floor or office area."
+        ]
+      }
+    },
+    {
+      "id": "printer_missing_after_setup",
+      "question": "A network printer did not appear automatically on a new user's workstation. What deployment mechanism, manual add path, inventory source, and driver location should the technician use?",
+      "expected": {
+        "source_files": ["workstation_setup.md"],
+        "facts": [
+          "Network printers are deployed via Group Policy based on the user's OU location.",
+          "Add the printer manually through Settings.",
+          "Then use Printers and Scanners.",
+          "Then choose Add Printer.",
+          "Use the TCP/IP address from the printer inventory spreadsheet on SharePoint.",
+          "Driver packages are available on the print server at \\\\printserver\\drivers."
+        ]
+      }
+    },
+    {
+      "id": "sccm_apps_available_not_installing",
+      "question": "Software Center shows assigned applications as Available but they are not installing. What service, logs, OU or collection checks, and reinstall command sequence should be used?",
+      "expected": {
+        "source_files": ["workstation_setup.md"],
+        "facts": [
+          "Restart the SCCM agent service CcmExec.",
+          "Check the SCCM client logs at C:\\Windows\\CCM\\Logs.",
+          "Verify the workstation is in the correct AD OU.",
+          "Verify the workstation is in the correct SCCM collection.",
+          "Remove and reinstall the SCCM client if the issue persists.",
+          "Use ccmsetup.exe /uninstall.",
+          "Then use ccmsetup.exe SMSSITECODE=ABC."
+        ]
+      }
+    },
+    {
+      "id": "vpn_timeout_public_wifi",
+      "question": "A laptop on public Wi-Fi gets VPN connection timeouts. What ordered checks and AnyConnect preference are documented, and what traffic must the firewall allow to the concentrator?",
+      "expected": {
+        "source_files": ["vpn_setup.md", "network_infrastructure.md"],
+        "facts": [
+          "Verify the internet connection by browsing to an external website.",
+          "Check that the VPN gateway address is vpn.company.com.",
+          "Try disconnecting and reconnecting.",
+          "If using Wi-Fi, try switching to a wired connection.",
+          "Some public Wi-Fi networks block VPN protocols.",
+          "Try the AnyConnect Allow local LAN access option in Preferences.",
+          "The perimeter firewall allows VPN traffic UDP 443 and TCP 443 to the VPN concentrator."
+        ]
+      }
+    },
+    {
+      "id": "wireless_guest_isolation",
+      "question": "Explain how corporate, guest, and IoT wireless access differ, including authentication, isolation, VLAN, controllers, and access point models.",
+      "expected": {
+        "source_files": ["network_infrastructure.md"],
+        "facts": [
+          "The wireless network uses Cisco 9800 wireless controllers.",
+          "The access points are Catalyst 9166 access points.",
+          "The Corporate SSID uses 802.1X authentication with AD credentials.",
+          "The Corporate SSID uses WPA3-Enterprise.",
+          "Corporate-Guest uses a captive portal with sponsor approval.",
+          "Corporate-Guest is isolated on VLAN 200.",
+          "IoT-Devices uses WPA2-PSK.",
+          "IoT-Devices is isolated on its own VLAN for printers, displays, and conference room equipment."
+        ]
+      }
+    },
+    {
+      "id": "offboarding_policy_gpo_audit",
+      "question": "When offboarding an employee, what should happen to their AD account, groups, email, deletion timing, and what GPO troubleshooting command/order might help audit workstation policy state?",
+      "expected": {
+        "source_files": ["active_directory_guide.md"],
+        "facts": [
+          "Disable the account within 24 hours of departure.",
+          "Do not delete accounts immediately because they may be needed for audit purposes.",
+          "Move the disabled account to the Disabled Users OU.",
+          "Remove all group memberships except Domain Users.",
+          "Forward email to the manager for 30 days.",
+          "After 90 days, the account can be permanently deleted.",
+          "GPOs are applied in Local, Site, Domain, OU order.",
+          "Run gpresult /r on the affected workstation to see applied policies."
+        ]
+      }
+    }
+  ]
+}

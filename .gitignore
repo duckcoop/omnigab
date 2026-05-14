@@ -1,0 +1,12 @@
+# Models
+models/*.gguf
+
+# Local Data
+vectorstore/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+venv/
+.DS_Store

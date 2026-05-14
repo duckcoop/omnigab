@@ -33,54 +33,59 @@ Before you start, make sure you have these two things installed:
 
 ## Setup
 
-Everything you need is already in this repo (source code, sample documents, config). The only thing that can't be included is the AI model file because it's 1.1 GB and GitHub has a 100 MB file limit.
+Everything you need is already in this repo (source code, sample documents, config). The only thing not included is the AI model file because it's 1.1 GB and GitHub has a 100 MB file limit.
 
-You have two options to get set up:
+### Step 1: Download the project
 
-### Option A: Run the setup script (recommended)
+Click the green **Code** button above, then **Download ZIP**. Extract it and open the folder.
 
-This handles everything automatically: creates a virtual environment, installs Python packages, and downloads the AI model for you.
-
-1. Download the project: click the green **Code** button above, then **Download ZIP**. Extract it and open the folder. (Or `git clone https://github.com/duckcoop/local-rag-agent.git` if you have Git.)
-
-2. Open **PowerShell** in the project folder (right-click in the folder > "Open in Terminal") and run:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\setup_rag.ps1
+Or with Git:
+```
+git clone https://github.com/duckcoop/local-rag-agent.git
+cd local-rag-agent
 ```
 
-It will ask you to confirm. Type **Y** and press Enter. This only affects the current window.
+### Step 2: Create a virtual environment
 
-**Prefer Command Prompt?** Run `setup_rag.bat` instead. Same thing, no PowerShell needed.
+Open a terminal in the project folder:
 
-### Option B: Set it up manually
-
-If you don't want to run a script, you can do each step yourself:
-
-1. Download and extract the project (same as above).
-
-2. Open a terminal in the project folder and create a virtual environment:
 ```
 python -m venv venv
 ```
 
-3. Activate it:
-    - **PowerShell:** `.\venv\Scripts\Activate.ps1`
-    - **Command Prompt:** `venv\Scripts\activate.bat`
+Activate it:
 
-4. Install dependencies:
+**PowerShell:** `.\venv\Scripts\Activate.ps1`
+
+**Command Prompt:** `venv\Scripts\activate.bat`
+
+You should see `(venv)` at the start of your prompt.
+
+### Step 3: Install dependencies
+
 ```
 pip install -r requirements.txt
 ```
 
-5. Download the AI model (~1.1 GB). Pick one:
-    - **From the command line:**
-      ```
-      pip install huggingface-hub
-      huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir models/
-      ```
-    - **From your browser:** Go to [huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF), click **Files and versions**, find `qwen2.5-1.5b-instruct-q4_k_m.gguf`, download it, and put it in the `models/` folder.
+This takes a few minutes since PyTorch is a large download.
+
+### Step 4: Download the AI model
+
+The model is the only thing not in the repo (~1.1 GB, too large for GitHub). Pick whichever method you prefer:
+
+**Option A: Run the download script**
+
+**PowerShell:**
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\download_model.ps1
+```
+
+**Command Prompt:** Run `download_model.bat` (you can just double-click it).
+
+**Option B: Download it in your browser**
+
+Go to [huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF), click **Files and versions**, find `qwen2.5-1.5b-instruct-q4_k_m.gguf`, download it, and put it in the `models/` folder.
 
 For more detail on model options and CPU tuning, see the [Setup Guide](SETUP_GUIDE.md).
 
@@ -118,12 +123,7 @@ The `query` command opens an interactive chat. Ask a question, get an answer sou
 
 **First query is slow** because the AI model and embedding engine need to load into memory. This takes 10 to 20 seconds. After that, each query is much faster.
 
-**"Model file not found"** means the GGUF model isn't in the `models/` folder. Run the setup script again or download it manually:
-```powershell
-.\venv\Scripts\Activate.ps1
-pip install huggingface-hub
-huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir models/
-```
+**"Model file not found"** means the GGUF model isn't in the `models/` folder. Run `download_model.bat` or `download_model.ps1`, or download it manually from [HuggingFace](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF).
 
 ---
 
@@ -170,14 +170,14 @@ To switch models: download the new GGUF file into the `models/` folder, then upd
 
 ```
 local-rag-agent/
-  data/docs/          Your documents go here
-  models/             AI model files (GGUF format)
-  src/                Python source code
-  tests/              Benchmark tests
-  vectorstore/        Search index (created after ingest)
-  setup_rag.ps1       PowerShell setup script
-  setup_rag.bat       Command Prompt setup script
-  requirements.txt    Python dependencies
+  data/docs/            Your documents go here
+  models/               AI model files (GGUF format)
+  src/                  Python source code
+  tests/                Benchmark tests
+  vectorstore/          Search index (created after ingest)
+  download_model.ps1    Model downloader (PowerShell)
+  download_model.bat    Model downloader (Command Prompt)
+  requirements.txt      Python dependencies
 ```
 
 ---

@@ -59,13 +59,13 @@ class Generator:
             context = context[:max_context_chars].rsplit("\n", 1)[0]
 
         system_msg = (
-            "You are a helpful assistant. Answer the question directly. "
-            "ONLY state facts that are explicitly written in the context below. "
-            "Do not guess, infer, or add information that is not in the context. "
-            "Give specific numbers and details. Keep it short. "
-            "Do not say 'refer to' or 'visit' a website. "
-            "Do not repeat the question. "
-            "If the context does not contain the answer, say so in one sentence."
+            "You are a helpful assistant. Answer using ONLY facts from the context. "
+            "Be natural and conversational. Match your answer length to the question: "
+            "simple questions get 1-2 sentence answers, complex questions get longer ones. "
+            "State specific numbers, temperatures, times, and facts directly. "
+            "Never say 'refer to', 'visit', 'described as having', or 'is provided by'. "
+            "Never repeat the question. Never mention the source or context. "
+            "Just answer like a person would."
         )
 
         user_msg = f"Context:\n{context}\n\nQuestion: {question}"
@@ -140,7 +140,7 @@ class GeneratorHF:
         max_context_chars = 800
         if len(context) > max_context_chars:
             context = context[:max_context_chars].rsplit("\n", 1)[0]
-        system_msg = "You are a helpful assistant. ONLY state facts explicitly written in the context. Do not guess or infer. Give specific numbers and details. Keep it short. Do not say refer to or visit a website."
+        system_msg = "You are a helpful assistant. Answer using ONLY facts from the context. Be natural and concise. Match answer length to the question. State specific numbers and facts directly. Never mention the source. Just answer like a person would."
         user_msg = f"Context:\n{context}\n\nQuestion: {question}"
         messages = [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}]
         try:

@@ -34,6 +34,7 @@ from embeddings import EmbeddingEngine
 from vectorstore import VectorStore
 from verifier import Verifier, print_verification_report
 from web_search import WebSearchEngine
+from user_memory import UserMemory
 
 
 def load_generator():
@@ -67,10 +68,19 @@ class RAGAgent:
             else:
                 self.web_search = None
 
+        # User memory (persistent preferences)
+        self.memory = UserMemory()
+
+        # Conversation history (session-scoped)
+        self.history = []
+        self.max_history = 6  # keep last 6 exchanges (3 Q&A pairs)
+
         self.generator = None
         if load_gen:
             self.generator = load_generator()
 
+        mem_status = "loaded" if self.memory.get("location") else "empty (use /set to configure)"
+        print(f"User memory: {mem_status}")
         print("\nRAG Agent initialized (verification layer active).\n")
 
     def ingest(self, docs_dir: Path = DOCS_DIR):
@@ -118,6 +128,26 @@ class RAGAgent:
         gen_texts = [chunk.text for chunk, _ in results]
         return "\n\n".join(gen_texts), gen_texts
 
+    def add_to_history(self, role: str, text: str):
+        """Add a message to conversation history, trimming to max size."""
+        self.history.append({"role": role, "text": text})
+        if len(self.history) > self.max_history:
+            self.history = self.history[-self.max_history:]
+
+    def get_history_text(self) -> str:
+        """Format conversation history for the generator prompt."""
+        if not self.history:
+            return ""
+        lines = []
+        for msg in self.history:
+            prefix = "User" if msg["role"] == "user" else "Assistant"
+            lines.append(f"{prefix}: {msg['text']}")
+        return "\n".join(lines)
+
+    def clear_history(self):
+        """Clear conversation history."""
+        self.history = []
+
     def query(self, question: str, verbose: bool = True) -> dict:
         """
         Full RAG query with self-correction verification loop.
@@ -129,10 +159,16 @@ class RAGAgent:
           4. If the overall Faithfulness Score is below the threshold, retries
              the query with a higher temperature and more retrieved context.
         """
+        self.add_to_history("user", question)
+
         start = time.time()
         current_top_k = TOP_K
         current_temp = TEMPERATURE
         best_result = None
+
+        # Build user context from memory
+        user_context = self.memory.build_prompt_context()
+        history_text = self.get_history_text()
 
         for attempt in range(1 + MAX_CORRECTION_ROUNDS):
             # -- Retrieve (local) --
@@ -175,6 +211,8 @@ class RAGAgent:
                 answer = self.generator.generate(
                     question, context,
                     temperature_override=current_temp if attempt > 0 else None,
+                    user_context=user_context,
+                    history=history_text if attempt == 0 else "",
                 )
                 stats = self.generator.get_last_stats()
             else:
@@ -223,19 +261,98 @@ class RAGAgent:
                 if verbose:
                     print(f"  Retrying with temp={current_temp:.2f}, top_k={current_top_k}")
 
+        # Track the answer in history
+        if best_result:
+            self.add_to_history("assistant", best_result["answer"])
+
         return best_result
+
+    def handle_command(self, command: str) -> str:
+        """Handle /commands for memory management. Returns response text or empty string."""
+        parts = command.strip().split(None, 2)
+        cmd = parts[0].lower()
+
+        if cmd == "/set" and len(parts) >= 3:
+            key = parts[1].lower()
+            value = parts[2]
+            if key in ("location", "units", "language"):
+                self.memory.set(key, value)
+                return f"Set {key} = {value}"
+            else:
+                self.memory.learn_fact(key, value)
+                return f"Remembered: {key} = {value}"
+
+        elif cmd == "/remember" and len(parts) >= 2:
+            instruction = command[len("/remember "):].strip()
+            self.memory.add_instruction(instruction)
+            return f"Got it, I'll remember: {instruction}"
+
+        elif cmd == "/forget" and len(parts) >= 2:
+            instruction = command[len("/forget "):].strip()
+            if self.memory.remove_instruction(instruction):
+                return f"Forgot: {instruction}"
+            if self.memory.forget_fact(instruction):
+                return f"Forgot: {instruction}"
+            return f"Couldn't find that in memory."
+
+        elif cmd == "/memory":
+            prefs = self.memory.get_all()
+            lines = []
+            if prefs.get("location"):
+                lines.append(f"Location: {prefs['location']}")
+            lines.append(f"Units: {prefs.get('units', 'imperial')}")
+            facts = prefs.get("learned_facts", {})
+            if facts:
+                lines.append("Facts: " + ", ".join(f"{k}={v}" for k, v in facts.items()))
+            instructions = prefs.get("custom_instructions", [])
+            if instructions:
+                lines.append("Instructions:")
+                for i in instructions:
+                    lines.append(f"  {i}")
+            if not lines:
+                return "Memory is empty. Use /set or /remember to add preferences."
+            return "\n".join(lines)
+
+        elif cmd == "/clear":
+            if len(parts) >= 2 and parts[1].lower() == "history":
+                self.clear_history()
+                return "Conversation history cleared."
+            elif len(parts) >= 2 and parts[1].lower() == "memory":
+                self.memory.clear()
+                return "All memory cleared."
+            else:
+                return "Use '/clear history' or '/clear memory'."
+
+        elif cmd == "/help":
+            return (
+                "Commands:\n"
+                "  /set location <place>     Set your location\n"
+                "  /set units imperial|metric Set temperature/distance units\n"
+                "  /set <key> <value>        Remember a fact about you\n"
+                "  /remember <instruction>   Add a custom instruction\n"
+                "  /forget <instruction>     Remove an instruction or fact\n"
+                "  /memory                   Show all saved preferences\n"
+                "  /clear history            Clear conversation history\n"
+                "  /clear memory             Reset all preferences\n"
+                "  /help                     Show this help"
+            )
+
+        return ""
 
     def interactive(self):
         """Run an interactive query loop."""
         backend = "GGUF/llama-cpp" if USE_GGUF else "HuggingFace"
         web_status = "enabled (DuckDuckGo)" if self.web_search else "disabled"
+        mem_location = self.memory.get("location")
+        mem_status = f"active ({mem_location})" if mem_location else "empty (type /help for commands)"
         print("-- Interactive Query Mode --")
         print(f"  Embedding: {EMBEDDING_MODEL}")
         print(f"  Generator: {backend}")
         print(f"  Index size: {self.store.size} vectors")
         print(f"  Web search: {web_status}")
+        print(f"  Memory: {mem_status}")
         print(f"  Verification: active (threshold={FAITHFULNESS_THRESHOLD})")
-        print(f"  Type 'quit' to exit\n")
+        print(f"  Type 'quit' to exit, /help for commands\n")
 
         while True:
             try:
@@ -247,6 +364,13 @@ class RAGAgent:
             if not question or question.lower() in ("quit", "exit", "q"):
                 print("Goodbye!")
                 break
+
+            # Handle /commands
+            if question.startswith("/"):
+                response = self.handle_command(question)
+                if response:
+                    print(f"\n{response}")
+                continue
 
             if self.web_search:
                 print("\nSearching documentation and the web...")

@@ -109,6 +109,17 @@ The `ingest` command reads your documents and builds the search index. Run it ag
 
 The `query` command opens an interactive chat. Ask a question, get an answer sourced from your files. Type `quit` to exit.
 
+### Web UI (optional)
+
+If you prefer a browser interface instead of the terminal:
+
+```
+cd src
+python web_app.py
+```
+
+Then open [http://localhost:8000](http://localhost:8000) in your browser. Same features as the terminal version, with a chat interface that shows faithfulness scores, source documents, and performance stats.
+
 ---
 
 ## Troubleshooting

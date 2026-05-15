@@ -42,11 +42,14 @@ class Generator:
         self.last_tps = 0.0
         self.last_token_count = 0
 
-    def generate(self, question: str, context: str, temperature_override: float = None) -> str:
+    def generate(self, question: str, context: str, temperature_override: float = None,
+                 user_context: str = "", history: str = "") -> str:
         """
         Generate an answer given a question and retrieved context.
         Uses Qwen2.5 <|im_start|>/<|im_end|> chat template.
         Accepts an optional temperature_override for verification retries.
+        user_context is injected from UserMemory preferences.
+        history is recent conversation for follow-up support.
         """
         # Clean markdown noise from retrieved chunks
         context = re.sub(r"#{1,6}\s+", "", context)
@@ -68,7 +71,13 @@ class Generator:
             "Just answer like a person would."
         )
 
-        user_msg = f"Context:\n{context}\n\nQuestion: {question}"
+        if user_context:
+            system_msg += "\n\n" + user_context
+
+        user_msg = ""
+        if history:
+            user_msg += f"Recent conversation:\n{history}\n\n"
+        user_msg += f"Context:\n{context}\n\nQuestion: {question}"
 
         # Build Qwen2.5 ChatML prompt
         prompt = (
@@ -133,7 +142,8 @@ class GeneratorHF:
         self.last_tps = 0.0
         self.last_token_count = 0
 
-    def generate(self, question: str, context: str, temperature_override: float = None) -> str:
+    def generate(self, question: str, context: str, temperature_override: float = None,
+                 user_context: str = "", history: str = "") -> str:
         import torch
         context = re.sub(r"#{1,6}\s+", "", context)
         context = re.sub(r"\n{3,}", "\n\n", context)
@@ -141,7 +151,12 @@ class GeneratorHF:
         if len(context) > max_context_chars:
             context = context[:max_context_chars].rsplit("\n", 1)[0]
         system_msg = "You are a helpful assistant. Answer using ONLY facts from the context. Be natural and concise. Match answer length to the question. State specific numbers and facts directly. Never mention the source. Just answer like a person would."
-        user_msg = f"Context:\n{context}\n\nQuestion: {question}"
+        if user_context:
+            system_msg += "\n\n" + user_context
+        user_msg = ""
+        if history:
+            user_msg += f"Recent conversation:\n{history}\n\n"
+        user_msg += f"Context:\n{context}\n\nQuestion: {question}"
         messages = [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}]
         try:
             prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)

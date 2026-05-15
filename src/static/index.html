@@ -26,6 +26,11 @@ body {
     font-weight: 500;
     color: #fff;
 }
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
 .status-bar {
     display: flex;
     gap: 16px;
@@ -41,6 +46,134 @@ body {
     margin-right: 4px;
     vertical-align: middle;
 }
+.settings-btn {
+    background: none;
+    border: 1px solid #333;
+    color: #888;
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.settings-btn:hover { border-color: #4a9eff; color: #4a9eff; }
+.settings-panel {
+    display: none;
+    background: #151515;
+    border-bottom: 1px solid #222;
+    padding: 16px 24px;
+}
+.settings-panel.open { display: block; }
+.settings-inner {
+    max-width: 720px;
+    margin: 0 auto;
+}
+.settings-inner h3 {
+    font-size: 14px;
+    color: #aaa;
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.setting-field label {
+    display: block;
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.setting-field input, .setting-field select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    font-size: 13px;
+    outline: none;
+}
+.setting-field input:focus, .setting-field select:focus { border-color: #4a9eff; }
+.instructions-area {
+    margin-top: 8px;
+}
+.instructions-area label {
+    display: block;
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.instruction-list {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 8px;
+}
+.instruction-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+.instruction-list li .remove-btn {
+    background: none;
+    border: none;
+    color: #e74c3c;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+}
+.add-instruction-row {
+    display: flex;
+    gap: 6px;
+}
+.add-instruction-row input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    font-size: 13px;
+    outline: none;
+}
+.add-instruction-row button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    background: #1a3a5c;
+    color: #c8ddf0;
+    font-size: 13px;
+    cursor: pointer;
+}
+.settings-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    justify-content: flex-end;
+}
+.settings-actions button {
+    padding: 6px 14px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: none;
+    color: #888;
+    font-size: 12px;
+    cursor: pointer;
+}
+.settings-actions button:hover { border-color: #4a9eff; color: #4a9eff; }
+.settings-actions button.danger:hover { border-color: #e74c3c; color: #e74c3c; }
 .chat-container {
     flex: 1;
     overflow-y: auto;
@@ -71,6 +204,18 @@ body {
     border-radius: 16px 16px 16px 4px;
     padding: 16px 20px;
     max-width: 90%;
+}
+.message.system {
+    display: flex;
+    justify-content: center;
+}
+.message.system .bubble {
+    background: #1a2a1a;
+    border: 1px solid #2a3a2a;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: #7ac77a;
 }
 .answer-text {
     font-size: 15px;
@@ -207,17 +352,54 @@ body {
 
 <div class="header">
     <h1>Local RAG Agent</h1>
-    <div class="status-bar">
-        <span><span class="status-dot"></span>Model loaded</span>
-        <span id="index-status">Index: loading...</span>
-        <span id="web-status"></span>
+    <div class="header-right">
+        <div class="status-bar">
+            <span><span class="status-dot"></span>Model loaded</span>
+            <span id="index-status">Index: loading...</span>
+            <span id="web-status"></span>
+            <span id="memory-status"></span>
+        </div>
+        <button class="settings-btn" onclick="toggleSettings()">Settings</button>
+    </div>
+</div>
+
+<div class="settings-panel" id="settings-panel">
+    <div class="settings-inner">
+        <h3>Memory &amp; Preferences</h3>
+        <div class="settings-grid">
+            <div class="setting-field">
+                <label>Location</label>
+                <input type="text" id="pref-location" placeholder="e.g. Frederick, MD" />
+            </div>
+            <div class="setting-field">
+                <label>Units</label>
+                <select id="pref-units">
+                    <option value="imperial">Imperial (F, miles, lbs)</option>
+                    <option value="metric">Metric (C, km, kg)</option>
+                </select>
+            </div>
+        </div>
+        <div class="instructions-area">
+            <label>Custom Instructions</label>
+            <ul class="instruction-list" id="instruction-list"></ul>
+            <div class="add-instruction-row">
+                <input type="text" id="new-instruction" placeholder="e.g. Don't use Celsius" />
+                <button onclick="addInstruction()">Add</button>
+            </div>
+        </div>
+        <div class="settings-actions">
+            <button onclick="saveSettings()">Save</button>
+            <button onclick="clearHistory()">Clear History</button>
+            <button class="danger" onclick="clearMemory()">Reset Memory</button>
+        </div>
     </div>
 </div>
 
 <div class="chat-container" id="chat">
     <div class="welcome">
         <h2>Ask anything</h2>
-        <p>Search your local documents and the web. Answers are verified against source material.</p>
+        <p>Search your local documents and the web. Answers are verified against source material.<br>
+        Click <strong>Settings</strong> to set your location and preferences.</p>
     </div>
 </div>
 
@@ -239,13 +421,108 @@ input.addEventListener("keydown", function(e) {
     if (e.key === "Enter" && !sendBtn.disabled) sendQuestion();
 });
 
+document.getElementById("new-instruction").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") addInstruction();
+});
+
 async function loadStatus() {
     try {
         const res = await fetch("/api/status");
         const data = await res.json();
         document.getElementById("index-status").textContent = "Index: " + data.index_size + " vectors";
-        document.getElementById("web-status").textContent = data.web_search ? "Web search: on" : "Web search: off";
+        document.getElementById("web-status").textContent = data.web_search ? "Web: on" : "Web: off";
     } catch(e) {}
+}
+
+async function loadMemory() {
+    try {
+        const res = await fetch("/api/memory");
+        const data = await res.json();
+        document.getElementById("pref-location").value = data.location || "";
+        document.getElementById("pref-units").value = data.units || "imperial";
+
+        const loc = data.location;
+        document.getElementById("memory-status").textContent = loc ? "Memory: " + loc : "Memory: not set";
+
+        const list = document.getElementById("instruction-list");
+        list.innerHTML = "";
+        (data.custom_instructions || []).forEach(function(inst) {
+            const li = document.createElement("li");
+            li.innerHTML = '<span>' + escapeHtml(inst) + '</span><button class="remove-btn" onclick="removeInstruction(this)">&times;</button>';
+            li.dataset.instruction = inst;
+            list.appendChild(li);
+        });
+    } catch(e) {}
+}
+
+async function saveSettings() {
+    const location = document.getElementById("pref-location").value.trim();
+    const units = document.getElementById("pref-units").value;
+
+    if (location) {
+        await fetch("/api/memory", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({action: "set", key: "location", value: location})
+        });
+    }
+
+    await fetch("/api/memory", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "set", key: "units", value: units})
+    });
+
+    await loadMemory();
+    addSystemMessage("Settings saved.");
+}
+
+async function addInstruction() {
+    const input = document.getElementById("new-instruction");
+    const text = input.value.trim();
+    if (!text) return;
+
+    await fetch("/api/memory", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "remember", instruction: text})
+    });
+
+    input.value = "";
+    await loadMemory();
+}
+
+async function removeInstruction(btn) {
+    const li = btn.parentElement;
+    const instruction = li.dataset.instruction;
+
+    await fetch("/api/memory", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "forget", instruction: instruction})
+    });
+
+    await loadMemory();
+}
+
+async function clearHistory() {
+    await fetch("/api/clear_history", {method: "POST"});
+    addSystemMessage("Conversation history cleared.");
+}
+
+async function clearMemory() {
+    if (!confirm("Reset all preferences and instructions?")) return;
+    await fetch("/api/memory", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "clear"})
+    });
+    await loadMemory();
+    addSystemMessage("Memory reset.");
+}
+
+function toggleSettings() {
+    document.getElementById("settings-panel").classList.toggle("open");
 }
 
 async function sendQuestion() {
@@ -291,6 +568,18 @@ function addMessage(role, text) {
     chat.scrollTop = chat.scrollHeight;
 }
 
+function addSystemMessage(text) {
+    if (firstMessage) {
+        chat.querySelector(".welcome")?.remove();
+        firstMessage = false;
+    }
+    const div = document.createElement("div");
+    div.className = "message system";
+    div.innerHTML = '<div class="bubble">' + escapeHtml(text) + '</div>';
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
 function addThinking() {
     const div = document.createElement("div");
     div.className = "thinking";
@@ -317,8 +606,6 @@ function addAnswer(data) {
         sourcesHtml += '</ul>';
     }
 
-    const srcId = "src-" + Date.now();
-
     div.innerHTML = '<div class="bubble">' +
         '<div class="answer-text">' + escapeHtml(data.answer) + '</div>' +
         '<div class="meta">' +
@@ -344,6 +631,7 @@ function escapeHtml(str) {
 }
 
 loadStatus();
+loadMemory();
 </script>
 </body>
 </html>

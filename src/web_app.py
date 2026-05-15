@@ -38,7 +38,7 @@ def get_agent():
 def startup():
     print("Loading RAG Agent...")
     get_agent()
-    print("Ready! Open http://localhost:8000")
+    print("Ready! Open http://localhost:8080")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -93,5 +93,51 @@ def api_status():
     })
 
 
+@app.get("/api/memory")
+def api_memory():
+    a = get_agent()
+    return JSONResponse(a.memory.get_all())
+
+
+@app.post("/api/memory")
+async def api_memory_update(request: Request):
+    body = await request.json()
+    a = get_agent()
+    action = body.get("action", "")
+
+    if action == "set":
+        key = body.get("key", "")
+        value = body.get("value", "")
+        if key in ("location", "units", "language"):
+            a.memory.set(key, value)
+        else:
+            a.memory.learn_fact(key, value)
+        return JSONResponse({"status": "ok", "memory": a.memory.get_all()})
+
+    elif action == "remember":
+        instruction = body.get("instruction", "")
+        a.memory.add_instruction(instruction)
+        return JSONResponse({"status": "ok", "memory": a.memory.get_all()})
+
+    elif action == "forget":
+        instruction = body.get("instruction", "")
+        a.memory.remove_instruction(instruction)
+        a.memory.forget_fact(instruction)
+        return JSONResponse({"status": "ok", "memory": a.memory.get_all()})
+
+    elif action == "clear":
+        a.memory.clear()
+        return JSONResponse({"status": "ok", "memory": a.memory.get_all()})
+
+    return JSONResponse({"error": "Unknown action"}, status_code=400)
+
+
+@app.post("/api/clear_history")
+async def api_clear_history():
+    a = get_agent()
+    a.clear_history()
+    return JSONResponse({"status": "ok"})
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8080)

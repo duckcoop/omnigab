@@ -3,6 +3,7 @@ models/*.gguf
 
 # Local Data
 vectorstore/
+user_memory.json
 __pycache__/
 *.pyc
 

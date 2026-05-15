@@ -1,4 +1,4 @@
-# Models
+# Models (downloaded at runtime, ~1+ GB)
 models/*.gguf
 
 # Local Data
@@ -10,8 +10,17 @@ __pycache__/
 # Environment
 .env
 venv/
-.DS_Store
+.venv/
 
-# Old setup scripts (replaced by download_model)
-setup_rag.ps1
-setup_rag.bat
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# HuggingFace cache
+.cache/

@@ -44,10 +44,16 @@ AVAILABLE_MODELS = {
         "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
     },
     "qwen2.5-7b-instruct-q4_k_m.gguf": {
-        "name": "Qwen 2.5 7B (Best Quality)",
+        "name": "Qwen 2.5 7B (Great Quality)",
         "size": "~4.4 GB",
         "ram": "~10 GB",
         "repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+    },
+    "qwen2.5-14b-instruct-q4_k_m.gguf": {
+        "name": "Qwen 2.5 14B (Best Quality)",
+        "size": "~8.9 GB",
+        "ram": "~16 GB",
+        "repo": "Qwen/Qwen2.5-14B-Instruct-GGUF",
     },
 }
 MODELS_DIR = PROJECT_ROOT.parent / "models"

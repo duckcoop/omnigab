@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Search Agent</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+}
+.header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #222;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.header h1 { font-size: 18px; font-weight: 500; color: #fff; }
+.header a { color: #4a9eff; text-decoration: none; font-size: 13px; }
+.header a:hover { text-decoration: underline; }
+.container { max-width: 900px; margin: 0 auto; padding: 24px; }
+
+/* Search form */
+.search-form {
+    background: #151515;
+    border: 1px solid #222;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+.search-form h2 { font-size: 16px; margin-bottom: 16px; color: #fff; }
+.form-row { display: flex; gap: 12px; margin-bottom: 12px; }
+.form-group { flex: 1; }
+.form-group label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+.form-group input {
+    width: 100%;
+    padding: 10px 14px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #e0e0e0;
+    font-size: 14px;
+    outline: none;
+}
+.form-group input:focus { border-color: #4a9eff; }
+.form-group input::placeholder { color: #555; }
+
+/* Resume section */
+.resume-section {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+.resume-section h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; }
+.resume-status { font-size: 12px; color: #666; margin-bottom: 8px; }
+.resume-status.loaded { color: #2ecc71; }
+.resume-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 10px;
+    background: #0f0f0f;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+}
+.resume-textarea:focus { border-color: #4a9eff; }
+.resume-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* Buttons */
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-primary { background: #4a9eff; color: #fff; }
+.btn-primary:hover { background: #3a8eef; }
+.btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; }
+.btn-secondary { background: #222; color: #aaa; border: 1px solid #333; }
+.btn-secondary:hover { background: #2a2a2a; color: #fff; }
+.btn-small { padding: 6px 14px; font-size: 12px; }
+
+/* Progress */
+.progress-area {
+    display: none;
+    background: #151515;
+    border: 1px solid #222;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+.progress-area.active { display: block; }
+.progress-status { font-size: 14px; color: #aaa; margin-bottom: 12px; }
+.progress-bar-outer {
+    width: 100%;
+    height: 6px;
+    background: #222;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.progress-bar-inner {
+    height: 100%;
+    background: #4a9eff;
+    border-radius: 3px;
+    transition: width 0.3s;
+    width: 0%;
+}
+
+/* Results */
+.results-area { display: none; }
+.results-area.active { display: block; }
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+.results-header h2 { font-size: 16px; color: #fff; }
+
+/* Job card */
+.job-card {
+    background: #151515;
+    border: 1px solid #222;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 12px;
+    transition: border-color 0.2s;
+}
+.job-card:hover { border-color: #333; }
+.job-top { display: flex; align-items: flex-start; gap: 16px; }
+.job-score {
+    font-size: 28px;
+    font-weight: 700;
+    min-width: 50px;
+    text-align: center;
+    line-height: 1;
+    padding-top: 2px;
+}
+.score-high { color: #2ecc71; }
+.score-mid { color: #f39c12; }
+.score-low { color: #e74c3c; }
+.job-info { flex: 1; }
+.job-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+.job-meta { font-size: 13px; color: #888; margin-bottom: 8px; }
+.job-meta span { margin-right: 16px; }
+.job-reason { font-size: 13px; color: #aaa; font-style: italic; margin-bottom: 8px; }
+.job-link { font-size: 12px; }
+.job-link a { color: #4a9eff; text-decoration: none; }
+.job-link a:hover { text-decoration: underline; }
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #555;
+}
+.empty-state h2 { font-size: 20px; margin-bottom: 8px; color: #666; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Job Search Agent</h1>
+    <a href="/">Back to Chat</a>
+</div>
+
+<div class="container">
+    <div class="search-form">
+        <h2>Find Jobs That Match Your Resume</h2>
+
+        <div class="resume-section">
+            <h3>Your Resume</h3>
+            <div id="resumeStatus" class="resume-status">No resume loaded</div>
+            <textarea id="resumeText" class="resume-textarea" placeholder="Paste your resume text here, or it will auto-detect from your data/docs/ folder if a file has 'resume' in the name..."></textarea>
+            <div class="resume-actions">
+                <button class="btn btn-secondary btn-small" onclick="uploadResume()">Load Resume</button>
+                <button class="btn btn-secondary btn-small" onclick="clearResume()">Clear</button>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Job Title / Keywords</label>
+                <input type="text" id="jobTitle" placeholder="e.g. Python Developer, IT Support, Data Analyst">
+            </div>
+            <div class="form-group">
+                <label>Location (optional)</label>
+                <input type="text" id="jobLocation" placeholder="e.g. Frederick MD, Remote">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button id="searchBtn" class="btn btn-primary" onclick="startSearch()">Search Jobs</button>
+            <span id="searchHint" style="font-size: 12px; color: #555;"></span>
+        </div>
+    </div>
+
+    <div id="progressArea" class="progress-area">
+        <div id="progressStatus" class="progress-status">Starting search...</div>
+        <div class="progress-bar-outer">
+            <div id="progressBar" class="progress-bar-inner"></div>
+        </div>
+    </div>
+
+    <div id="resultsArea" class="results-area">
+        <div class="results-header">
+            <h2 id="resultsTitle">Results</h2>
+            <button class="btn btn-secondary btn-small" onclick="downloadPDF()">Download PDF Report</button>
+        </div>
+        <div id="jobsList"></div>
+    </div>
+
+    <div id="emptyState" class="empty-state">
+        <h2>Search for jobs matching your resume</h2>
+        <p>Upload or paste your resume, enter a job title, and the AI will score each match.</p>
+    </div>
+</div>
+
+<script>
+let resumeLoaded = false;
+
+function uploadResume() {
+    const text = document.getElementById('resumeText').value.trim();
+    if (!text) {
+        document.getElementById('resumeStatus').textContent = 'Please paste your resume text first.';
+        return;
+    }
+    fetch('/api/jobs/upload-resume', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: text})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            resumeLoaded = true;
+            const el = document.getElementById('resumeStatus');
+            el.textContent = 'Resume loaded (' + data.length.toLocaleString() + ' characters)';
+            el.className = 'resume-status loaded';
+        }
+    })
+    .catch(err => {
+        document.getElementById('resumeStatus').textContent = 'Error: ' + err.message;
+    });
+}
+
+function clearResume() {
+    document.getElementById('resumeText').value = '';
+    resumeLoaded = false;
+    const el = document.getElementById('resumeStatus');
+    el.textContent = 'No resume loaded';
+    el.className = 'resume-status';
+}
+
+function startSearch() {
+    const title = document.getElementById('jobTitle').value.trim();
+    const location = document.getElementById('jobLocation').value.trim();
+
+    if (!title) {
+        document.getElementById('searchHint').textContent = 'Enter a job title first.';
+        return;
+    }
+
+    // Upload resume if text is present but not yet loaded
+    const resumeText = document.getElementById('resumeText').value.trim();
+    if (resumeText && !resumeLoaded) {
+        uploadResume();
+    }
+
+    document.getElementById('searchBtn').disabled = true;
+    document.getElementById('searchHint').textContent = '';
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('resultsArea').className = 'results-area';
+    document.getElementById('progressArea').className = 'progress-area active';
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('jobsList').innerHTML = '';
+
+    // Use streaming endpoint
+    fetch('/api/jobs/search/stream', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({title: title, location: location, num_results: 10})
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => { throw new Error(data.error || 'Search failed'); });
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        function read() {
+            reader.read().then(({done, value}) => {
+                if (done) {
+                    document.getElementById('searchBtn').disabled = false;
+                    return;
+                }
+
+                buffer += decoder.decode(value, {stream: true});
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const raw = line.slice(6).trim();
+                        if (!raw || raw === '[DONE]') continue;
+                        try {
+                            const msg = JSON.parse(raw);
+                            handleStreamMessage(msg);
+                        } catch(e) {}
+                    }
+                }
+                read();
+            });
+        }
+        read();
+    })
+    .catch(err => {
+        document.getElementById('progressStatus').textContent = 'Error: ' + err.message;
+        document.getElementById('searchBtn').disabled = false;
+    });
+}
+
+function handleStreamMessage(msg) {
+    const statusEl = document.getElementById('progressStatus');
+    const barEl = document.getElementById('progressBar');
+
+    if (msg.type === 'status') {
+        statusEl.textContent = msg.message;
+    }
+    else if (msg.type === 'progress') {
+        statusEl.textContent = 'Scraping job ' + msg.current + '/' + msg.total + '...';
+        barEl.style.width = ((msg.current / msg.total) * 40) + '%';
+    }
+    else if (msg.type === 'job') {
+        const progress = 40 + ((msg.index + 1) / 10) * 50;
+        barEl.style.width = progress + '%';
+    }
+    else if (msg.type === 'done') {
+        barEl.style.width = '100%';
+        setTimeout(() => {
+            document.getElementById('progressArea').className = 'progress-area';
+            showResults(msg.jobs);
+        }, 500);
+    }
+    else if (msg.type === 'error') {
+        statusEl.textContent = msg.message;
+        document.getElementById('searchBtn').disabled = false;
+    }
+}
+
+function showResults(jobs) {
+    const area = document.getElementById('resultsArea');
+    const list = document.getElementById('jobsList');
+    const title = document.getElementById('resultsTitle');
+
+    area.className = 'results-area active';
+    title.textContent = jobs.length + ' Jobs Found (sorted by match)';
+
+    list.innerHTML = '';
+    for (const job of jobs) {
+        const score = Math.round(job.match_score);
+        let scoreClass = 'score-low';
+        if (score >= 75) scoreClass = 'score-high';
+        else if (score >= 50) scoreClass = 'score-mid';
+
+        const meta = [];
+        if (job.company && job.company !== 'Unknown Company') meta.push('<span>' + esc(job.company) + '</span>');
+        if (job.location) meta.push('<span>' + esc(job.location) + '</span>');
+        if (job.salary) meta.push('<span>' + esc(job.salary) + '</span>');
+
+        const card = document.createElement('div');
+        card.className = 'job-card';
+        card.innerHTML =
+            '<div class="job-top">' +
+                '<div class="job-score ' + scoreClass + '">' + score + '</div>' +
+                '<div class="job-info">' +
+                    '<div class="job-title">' + esc(job.title) + '</div>' +
+                    (meta.length ? '<div class="job-meta">' + meta.join('') + '</div>' : '') +
+                    (job.match_reason ? '<div class="job-reason">' + esc(job.match_reason) + '</div>' : '') +
+                    (job.url ? '<div class="job-link"><a href="' + esc(job.url) + '" target="_blank">View on Indeed</a></div>' : '') +
+                '</div>' +
+            '</div>';
+        list.appendChild(card);
+    }
+
+    document.getElementById('searchBtn').disabled = false;
+}
+
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function downloadPDF() {
+    window.open('/api/jobs/pdf', '_blank');
+}
+
+// Enter key triggers search
+document.getElementById('jobTitle').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startSearch();
+});
+document.getElementById('jobLocation').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startSearch();
+});
+</script>
+</body>
+</html>

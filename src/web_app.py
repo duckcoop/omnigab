@@ -17,9 +17,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 import uvicorn
 
 from config import (
-    DOCS_DIR, EMBEDDING_MODEL, USE_GGUF,
+    DOCS_DIR, EMBEDDING_MODEL, EMBEDDING_DIMENSION, USE_GGUF,
     FAITHFULNESS_THRESHOLD, WEB_SEARCH_ENABLED,
-    AVAILABLE_MODELS, MODELS_DIR,
+    AVAILABLE_MODELS, MODELS_DIR, GGUF_MODEL_PATH,
+    CONTEXT_WINDOW, N_THREADS, MAX_NEW_TOKENS, TEMPERATURE, TOP_P,
 )
 from rag_agent import RAGAgent
 
@@ -345,12 +346,103 @@ def api_job_pdf():
     output_path = Path(__file__).parent.parent / "job_results.pdf"
     generate_job_report(ja.get_top_jobs(5), output_path=output_path)
 
-    pdf_bytes = output_path.read_bytes()
-    return StreamingResponse(
-        iter([pdf_bytes]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=job_results.pdf"}
+    pdf_byt
+# -- Document Management Endpoints --
+@app.get("/api/docs/list")
+def api_docs_list():
+    docs_dir = DOCS_DIR
+    if not docs_dir.exists():
+        return JSONResponse({"files": [], "total_size": 0})
+    files = []
+    total_size = 0
+    for f in sorted(docs_dir.rglob("*")):
+        if f.is_file():
+            size = f.stat().st_size
+            total_size += size
+            files.append({
+                "name": str(f.relative_to(docs_dir)),
+                "size": size,
+                "extension": f.suffix.lower(),
+            })
+    return JSONResponse({"files": files, "total_size": total_size})
+
+
+# -- Model Management Endpoints --
+@app.post("/api/models/switch")
+async def api_model_switch(request: Request):
+    body = await request.json()
+    filename = body.get("filename", "").strip()
+    if not filename or filename not in AVAILABLE_MODELS:
+        return JSONResponse({"error": "Invalid model"}, status_code=400)
+
+    model_path = MODELS_DIR / filename
+    if not model_path.exists():
+        return JSONResponse({"error": "Model not downloaded"}, status_code=400)
+
+    # Update config.py
+    config_path = Path(__file__).parent / "config.py"
+    config_text = config_path.read_text(encoding="utf-8")
+
+    import re as _re
+    new_text = _re.sub(
+        r'GGUF_MODEL_PATH = MODELS_DIR / ".*?"',
+        f'GGUF_MODEL_PATH = MODELS_DIR / "{filename}"',
+        config_text,
     )
+    config_path.write_text(new_text, encoding="utf-8")
+
+    return JSONResponse({
+        "status": "ok",
+        "message": f"Switched to {AVAILABLE_MODELS[filename]['name']}. Restart the server to load it.",
+        "model": filename,
+    })
+
+
+@app.get("/api/system")
+def api_system_info():
+    import platform
+    import os
+    a = get_agent()
+    current_model = GGUF_MODEL_PATH.name if GGUF_MODEL_PATH.exists() else "not found"
+    return JSONResponse({
+        "platform": platform.platform(),
+        "python": platform.python_version(),
+        "cpu": platform.processor() or "Unknown",
+        "threads": N_THREADS,
+        "context_window": CONTEXT_WINDOW,
+        "max_tokens": MAX_NEW_TOKENS,
+        "temperature": TEMPERATURE,
+        "top_p": TOP_P,
+        "embedding_model": EMBEDDING_MODEL,
+        "embedding_dim": EMBEDDING_DIMENSION,
+        "current_model": current_model,
+        "use_gguf": USE_GGUF,
+        "index_size": a.store.size,
+        "web_search": WEB_SEARCH_ENABLED,
+        "faithfulness_threshold": FAITHFULNESS_THRESHOLD,
+        "docs_dir": str(DOCS_DIR),
+        "models_dir": str(MODELS_DIR),
+    })
+
+
+@app.get("/api/benchmark")
+async def api_benchmark(request: Request):
+    """Quick benchmark: generate a short response and return timing stats."""
+    a = get_agent()
+    test_q = "What is 2+2? Answer in one word."
+    test_ctx = "Basic math: 2+2=4, 3+3=6, 4+4=8."
+    import time as _time
+    t0 = _time.time()
+    answer = a.gen.generate(test_q, test_ctx, temperature_override=0.1)
+    elapsed = _time.time() - t0
+    stats = a.gen.get_last_stats()
+    return JSONResponse({
+        "answer": answer,
+        "tokens": stats["tokens"],
+        "tps": stats["tps"],
+        "elapsed": round(elapsed, 2),
+        "model": GGUF_MODEL_PATH.name,
+    })
 
 
 if __name__ == "__main__":

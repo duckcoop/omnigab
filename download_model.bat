@@ -132,8 +132,8 @@ if exist "!GGUF_MODEL!" (
 echo Updating config.py to use !LABEL!...
 echo.
 
-:: Use PowerShell to do the find-and-replace in config.py
-powershell -Command "(Get-Content '!CONFIG!') -replace 'GGUF_MODEL_PATH = MODELS_DIR / \".*?\"', 'GGUF_MODEL_PATH = MODELS_DIR / \"!FILE!\"' | Set-Content '!CONFIG!'"
+:: Use PowerShell to do the find-and-replace in config.py (preserving encoding)
+powershell -Command "$c = [IO.File]::ReadAllText('!CONFIG!'); $c = $c -replace 'GGUF_MODEL_PATH = MODELS_DIR / \".*?\"', 'GGUF_MODEL_PATH = MODELS_DIR / \"!FILE!\"'; [IO.File]::WriteAllText('!CONFIG!', $c)"
 
 :: Verify it worked
 findstr /C:"!FILE!" "!CONFIG!" >nul 2>&1

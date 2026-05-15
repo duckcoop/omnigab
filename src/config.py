@@ -49,15 +49,15 @@ AVAILABLE_MODELS = {
         "ram": "~10 GB",
         "repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
     },
-    "qwen2.5-14b-instruct-q4_k_m.gguf": {
+    "Qwen2.5-14B-Instruct-Q4_K_M.gguf": {
         "name": "Qwen 2.5 14B (Best Quality)",
         "size": "~8.9 GB",
         "ram": "~16 GB",
-        "repo": "Qwen/Qwen2.5-14B-Instruct-GGUF",
+        "repo": "bartowski/Qwen2.5-14B-Instruct-GGUF",
     },
 }
 MODELS_DIR = PROJECT_ROOT.parent / "models"
-GGUF_MODEL_PATH = MODELS_DIR / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+GGUF_MODEL_PATH = MODELS_DIR / "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
 CONTEXT_WINDOW = 8192
 N_THREADS = 8       # match your physical core count (Ryzen 9850X3D = 8 cores)
 

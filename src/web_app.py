@@ -63,6 +63,14 @@ def serve_ui():
     return html_path.read_text(encoding="utf-8")
 
 
+@app.get("/jobs", response_class=HTMLResponse)
+def serve_jobs_ui():
+    html_path = Path(__file__).parent / "static" / "jobs.html"
+    if not html_path.exists():
+        return HTMLResponse("<h1>jobs.html not found</h1>", status_code=404)
+    return html_path.read_text(encoding="utf-8")
+
+
 @app.get("/api/session")
 def api_new_session():
     sid = str(uuid.uuid4())[:8]
@@ -209,6 +217,140 @@ async def api_clear_history(request: Request):
     a = get_agent()
     a.history = []
     return JSONResponse({"status": "ok"})
+
+# -- Job Agent Endpoints --
+job_agent_instance = None
+uploaded_resume_text = ""
+
+
+def get_job_agent():
+    global job_agent_instance
+    if job_agent_instance is None:
+        from job_agent import JobAgent
+        a = get_agent()
+        gen = a.gen if hasattr(a, 'gen') else None
+        job_agent_instance = JobAgent(generator=gen)
+    return job_agent_instance
+
+
+@app.post("/api/jobs/upload-resume")
+async def api_upload_resume(request: Request):
+    global uploaded_resume_text
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        return JSONResponse({"error": "No resume text provided"}, status_code=400)
+    uploaded_resume_text = text
+    ja = get_job_agent()
+    ja.set_resume_text(text)
+    return JSONResponse({"status": "ok", "length": len(text)})
+
+
+@app.post("/api/jobs/search")
+async def api_job_search(request: Request):
+    body = await request.json()
+    job_title = body.get("title", "").strip()
+    location = body.get("location", "").strip()
+    num_results = body.get("num_results", 10)
+
+    if not job_title:
+        return JSONResponse({"error": "No job title provided"}, status_code=400)
+
+    ja = get_job_agent()
+
+    # Load resume if not already loaded
+    if not ja.resume_text:
+        if uploaded_resume_text:
+            ja.set_resume_text(uploaded_resume_text)
+        else:
+            loaded = ja.load_resume()
+            if not loaded:
+                return JSONResponse({
+                    "error": "No resume found. Upload one or add a file with 'resume' in the name to data/docs/"
+                }, status_code=400)
+
+    jobs = ja.search_and_score(job_title, location, num_results)
+    return JSONResponse({
+        "status": "ok",
+        "count": len(jobs),
+        "jobs": ja.to_dict_list(n=len(jobs)),
+    })
+
+
+@app.post("/api/jobs/search/stream")
+async def api_job_search_stream(request: Request):
+    body = await request.json()
+    job_title = body.get("title", "").strip()
+    location = body.get("location", "").strip()
+    num_results = body.get("num_results", 10)
+
+    if not job_title:
+        return JSONResponse({"error": "No job title provided"}, status_code=400)
+
+    ja = get_job_agent()
+
+    if not ja.resume_text:
+        if uploaded_resume_text:
+            ja.set_resume_text(uploaded_resume_text)
+        else:
+            loaded = ja.load_resume()
+            if not loaded:
+                return JSONResponse({
+                    "error": "No resume found. Upload one first."
+                }, status_code=400)
+
+    def stream():
+        from job_agent import search_jobs, _scrape_job_page, parse_job_from_search, score_job_with_llm
+
+        yield "data: " + json.dumps({"type": "status", "message": "Searching Indeed..."}) + "\n\n"
+
+        raw_results = search_jobs(job_title, location, num_results)
+        if not raw_results:
+            yield "data: " + json.dumps({"type": "error", "message": "No results found."}) + "\n\n"
+            return
+
+        yield "data: " + json.dumps({"type": "status", "message": f"Found {len(raw_results)} listings. Scraping..."}) + "\n\n"
+
+        jobs = []
+        for i, result in enumerate(raw_results):
+            url = result.get("href", "")
+            scraped = _scrape_job_page(url) if url else None
+            job = parse_job_from_search(result, scraped)
+            jobs.append(job)
+            yield "data: " + json.dumps({"type": "progress", "step": "scrape", "current": i + 1, "total": len(raw_results)}) + "\n\n"
+
+        if ja.generator:
+            for i, job in enumerate(jobs):
+                yield "data: " + json.dumps({"type": "status", "message": f"AI scoring {i+1}/{len(jobs)}: {job.title[:40]}..."}) + "\n\n"
+                score, reason = score_job_with_llm(ja.generator, job, ja.resume_text)
+                job.match_score = score
+                job.match_reason = reason
+                yield "data: " + json.dumps({"type": "job", "index": i, "job": job.to_dict()}) + "\n\n"
+
+        jobs.sort(key=lambda j: j.match_score, reverse=True)
+        ja.jobs = jobs
+
+        yield "data: " + json.dumps({"type": "done", "count": len(jobs), "jobs": [j.to_dict() for j in jobs]}) + "\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.get("/api/jobs/pdf")
+def api_job_pdf():
+    ja = get_job_agent()
+    if not ja.jobs:
+        return JSONResponse({"error": "No job results yet. Run a search first."}, status_code=400)
+
+    from job_report import generate_job_report
+    output_path = Path(__file__).parent.parent / "job_results.pdf"
+    generate_job_report(ja.get_top_jobs(5), output_path=output_path)
+
+    pdf_bytes = output_path.read_bytes()
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=job_results.pdf"}
+    )
 
 
 if __name__ == "__main__":

@@ -16,6 +16,34 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import DOCS_DIR, SUPPORTED_EXTENSIONS, CHUNK_SIZE, CHUNK_OVERLAP
 
 
+def extract_pdf_text(file_path: Path) -> str:
+    """
+    Extract text from a PDF file using PyMuPDF (fitz).
+    Falls back to raw read if PyMuPDF is not installed.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        print(f"  Warning: PyMuPDF not installed, reading {file_path.name} as raw text.")
+        print(f"  Install with: pip install pymupdf")
+        return file_path.read_text(encoding="utf-8", errors="replace")
+
+    doc = fitz.open(str(file_path))
+    pages = []
+    for page_num, page in enumerate(doc):
+        text = page.get_text("text")
+        if text.strip():
+            pages.append(text)
+    doc.close()
+
+    if not pages:
+        return ""
+
+    full_text = "\n\n".join(pages)
+    print(f"  PDF: {file_path.name} ({len(pages)} pages, {len(full_text):,} chars)")
+    return full_text
+
+
 @dataclass
 class Chunk:
     """A text chunk with source metadata."""
@@ -50,7 +78,10 @@ def load_documents(docs_dir: Optional[Path] = None) -> list[tuple[str, str]]:
     for file_path in sorted(docs_dir.rglob("*")):
         if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
             try:
-                content = file_path.read_text(encoding="utf-8", errors="replace")
+                if file_path.suffix.lower() == ".pdf":
+                    content = extract_pdf_text(file_path)
+                else:
+                    content = file_path.read_text(encoding="utf-8", errors="replace")
                 if content.strip():
                     rel_path = str(file_path.relative_to(docs_dir))
                     documents.append((rel_path, content))
@@ -140,20 +171,3 @@ def save_metadata(chunks: list[Chunk], path: Path):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
     print(f"Metadata saved to {path}")
-
-
-def load_metadata(path: Path) -> list[Chunk]:
-    """Load chunk metadata from JSON."""
-    with open(path, "r") as f:
-        data = json.load(f)
-    return [Chunk.from_dict(d) for d in data]
-
-
-if __name__ == "__main__":
-    print("=== Document Ingestion Test ===\n")
-    docs = load_documents()
-    if docs:
-        chunks = chunk_documents(docs)
-        for c in chunks[:3]:
-            print(f"\n[{c.source_file} | chunk {c.chunk_index}]")
-            print(c.text[:200] + "...")

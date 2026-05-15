@@ -416,6 +416,17 @@ const input = document.getElementById("question");
 const sendBtn = document.getElementById("send-btn");
 
 let firstMessage = true;
+let sessionId = null;
+
+async function initSession() {
+    try {
+        const res = await fetch("/api/session");
+        const data = await res.json();
+        sessionId = data.session_id;
+    } catch(e) {
+        sessionId = "default";
+    }
+}
 
 input.addEventListener("keydown", function(e) {
     if (e.key === "Enter" && !sendBtn.disabled) sendQuestion();
@@ -506,7 +517,11 @@ async function removeInstruction(btn) {
 }
 
 async function clearHistory() {
-    await fetch("/api/clear_history", {method: "POST"});
+    await fetch("/api/clear_history", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({session_id: sessionId})
+    });
     addSystemMessage("Conversation history cleared.");
 }
 
@@ -542,14 +557,56 @@ async function sendQuestion() {
     chat.scrollTop = chat.scrollHeight;
 
     try {
-        const res = await fetch("/api/query", {
+        const res = await fetch("/api/query/stream", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({question: q})
+            body: JSON.stringify({question: q, session_id: sessionId})
         });
-        const data = await res.json();
+
         thinkingEl.remove();
-        addAnswer(data);
+
+        // Create streaming answer bubble
+        const div = document.createElement("div");
+        div.className = "message assistant";
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        const textEl = document.createElement("div");
+        textEl.className = "answer-text";
+        bubble.appendChild(textEl);
+        div.appendChild(bubble);
+        chat.appendChild(div);
+
+        let fullText = "";
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const payload = line.slice(6).trim();
+                if (payload === "[DONE]") continue;
+
+                try {
+                    const chunk = JSON.parse(payload);
+                    if (chunk.type === "token") {
+                        fullText += chunk.text;
+                        textEl.textContent = fullText;
+                        chat.scrollTop = chat.scrollHeight;
+                    } else if (chunk.type === "meta") {
+                        addMetaToBubble(bubble, chunk);
+                    }
+                } catch(e) {}
+            }
+        }
     } catch(e) {
         thinkingEl.remove();
         addMessage("assistant", "Something went wrong. Make sure the server is running.");
@@ -586,6 +643,41 @@ function addThinking() {
     div.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div> Searching and generating...';
     chat.appendChild(div);
     return div;
+}
+
+function addMetaToBubble(bubble, data) {
+    let faithClass = "faith-high";
+    let faithPct = data.faithfulness ? Math.round(data.faithfulness * 100) : 0;
+    if (faithPct < 70) faithClass = "faith-low";
+    else if (faithPct < 85) faithClass = "faith-mid";
+
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "meta";
+    metaDiv.innerHTML =
+        '<div class="meta-item"><span class="faith-badge ' + faithClass + '">' + faithPct + '% verified</span></div>' +
+        '<div class="meta-item">' + (data.tokens || 0) + ' tokens</div>' +
+        '<div class="meta-item">' + (data.tps || 0) + ' tok/s</div>' +
+        '<div class="meta-item">' + (data.retrieve_time || 0) + 's retrieve</div>' +
+        '<div class="meta-item">' + (data.generate_time || 0) + 's generate</div>';
+    bubble.appendChild(metaDiv);
+
+    if (data.sources && data.sources.length > 0) {
+        let sourcesHtml = '<ul class="sources-list">';
+        data.sources.forEach(function(s) {
+            sourcesHtml += '<li><span class="source-score">' + Math.round(s.score * 100) + '%</span> ' + escapeHtml(s.file) + '</li>';
+        });
+        sourcesHtml += '</ul>';
+
+        const toggle = document.createElement("div");
+        toggle.className = "sources-toggle";
+        toggle.textContent = data.sources.length + ' sources (click to expand)';
+        toggle.onclick = function() { this.nextElementSibling.classList.toggle('open'); };
+        bubble.appendChild(toggle);
+
+        const srcList = document.createElement("div");
+        srcList.innerHTML = sourcesHtml;
+        bubble.appendChild(srcList.firstElementChild);
+    }
 }
 
 function addAnswer(data) {
@@ -630,6 +722,7 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+initSession();
 loadStatus();
 loadMemory();
 </script>

@@ -29,12 +29,29 @@ TOP_K = 3
 SIMILARITY_THRESHOLD = 0.3
 
 # -- Generation Model (GGUF via llama-cpp) --
-# Primary: quantized GGUF for fast CPU inference
-# Drop larger models into the models/ directory and update the path:
-#   qwen2.5-3b-instruct-q4_k_m.gguf    (~2.1 GB, recommended)
-#   qwen2.5-7b-instruct-q4_k_m.gguf    (~4.4 GB, best quality)
-#   phi-4-mini-instruct-q4_k_m.gguf     (~2.3 GB, strong reasoning)
-GGUF_MODEL_PATH = PROJECT_ROOT.parent / "models" / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+# Available models (download into models/ folder):
+AVAILABLE_MODELS = {
+    "qwen2.5-1.5b-instruct-q4_k_m.gguf": {
+        "name": "Qwen 2.5 1.5B (Default)",
+        "size": "~1.1 GB",
+        "ram": "~4 GB",
+        "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+    },
+    "qwen2.5-3b-instruct-q4_k_m.gguf": {
+        "name": "Qwen 2.5 3B (Recommended)",
+        "size": "~2.1 GB",
+        "ram": "~6 GB",
+        "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+    },
+    "qwen2.5-7b-instruct-q4_k_m.gguf": {
+        "name": "Qwen 2.5 7B (Best Quality)",
+        "size": "~4.4 GB",
+        "ram": "~10 GB",
+        "repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+    },
+}
+MODELS_DIR = PROJECT_ROOT.parent / "models"
+GGUF_MODEL_PATH = MODELS_DIR / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 CONTEXT_WINDOW = 8192
 N_THREADS = 8       # match your physical core count (Ryzen 9850X3D = 8 cores)
 

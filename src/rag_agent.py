@@ -267,6 +267,86 @@ class RAGAgent:
 
         return best_result
 
+    def query_stream(self, question: str):
+        """
+        Streaming version of query. Yields dicts with either:
+          {"type": "token", "text": "..."} for each token
+          {"type": "meta", ...} for final metadata (sources, faithfulness, timing)
+        Skips verification loop for streaming (runs single pass).
+        """
+        self.add_to_history("user", question)
+        start = time.time()
+
+        # Retrieve
+        local_results = self.retrieve(question, top_k=TOP_K)
+        retrieve_time = time.time() - start
+
+        web_results = []
+        if self.web_search:
+            web_results = self.web_search.search(question)
+
+        results = local_results + web_results
+
+        if not results:
+            yield {"type": "token", "text": "I could not find any relevant information."}
+            yield {"type": "meta", "sources": [], "retrieve_time": round(retrieve_time, 3),
+                   "generate_time": 0, "tokens": 0, "tps": 0, "faithfulness": 0}
+            return
+
+        sources = []
+        for chunk, score in results:
+            sources.append({
+                "file": chunk.source_file,
+                "chunk": chunk.chunk_index,
+                "score": round(score, 4),
+                "preview": chunk.text[:100] + "...",
+            })
+
+        context, chunk_texts = self._build_context(results)
+        user_context = self.memory.build_prompt_context()
+        history_text = self.get_history_text()
+
+        # Stream tokens
+        gen_start = time.time()
+        full_answer = ""
+
+        if self.generator and hasattr(self.generator, "stream"):
+            for token_text in self.generator.stream(
+                question, context,
+                user_context=user_context,
+                history=history_text,
+            ):
+                full_answer += token_text
+                yield {"type": "token", "text": token_text}
+
+            stats = self.generator.get_last_stats()
+        else:
+            # Fallback: non-streaming
+            answer = self.generator.generate(
+                question, context,
+                user_context=user_context,
+                history=history_text,
+            )
+            full_answer = answer
+            stats = self.generator.get_last_stats()
+            yield {"type": "token", "text": answer}
+
+        generate_time = time.time() - gen_start
+
+        # Verify after streaming is done
+        verification = self.verifier.verify(full_answer, chunk_texts)
+        self.add_to_history("assistant", full_answer)
+
+        yield {
+            "type": "meta",
+            "sources": sources,
+            "faithfulness": round(verification.faithfulness_score, 2),
+            "retrieve_time": round(retrieve_time, 3),
+            "generate_time": round(generate_time, 3),
+            "tokens": stats.get("tokens", 0),
+            "tps": stats.get("tps", 0),
+        }
+
     def handle_command(self, command: str) -> str:
         """Handle /commands for memory management. Returns response text or empty string."""
         parts = command.strip().split(None, 2)

@@ -3,27 +3,33 @@ Web UI for the RAG Agent
 ========================
 FastAPI backend serving a chat interface. Run with:
     python web_app.py
-Then open http://localhost:8000 in your browser.
+Then open http://localhost:8080 in your browser.
 """
 
 import sys
 import time
 import json
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from config import (
     DOCS_DIR, EMBEDDING_MODEL, USE_GGUF,
     FAITHFULNESS_THRESHOLD, WEB_SEARCH_ENABLED,
+    AVAILABLE_MODELS, MODELS_DIR,
 )
 from rag_agent import RAGAgent
 
 app = FastAPI(title="Local RAG Agent")
 agent = None
+
+# Per-session conversation histories
+sessions = {}
+MAX_SESSIONS = 50
 
 
 def get_agent():
@@ -32,6 +38,15 @@ def get_agent():
         agent = RAGAgent(load_gen=True)
         agent.load_index()
     return agent
+
+
+def get_session_history(session_id):
+    if session_id not in sessions:
+        if len(sessions) >= MAX_SESSIONS:
+            oldest = next(iter(sessions))
+            del sessions[oldest]
+        sessions[session_id] = []
+    return sessions[session_id]
 
 
 @app.on_event("startup")
@@ -47,18 +62,29 @@ def serve_ui():
     return html_path.read_text(encoding="utf-8")
 
 
+@app.get("/api/session")
+def api_new_session():
+    sid = str(uuid.uuid4())[:8]
+    sessions[sid] = []
+    return JSONResponse({"session_id": sid})
+
+
 @app.post("/api/query")
 async def api_query(request: Request):
     body = await request.json()
     question = body.get("question", "").strip()
+    session_id = body.get("session_id", "default")
     if not question:
         return JSONResponse({"error": "No question provided"}, status_code=400)
 
     a = get_agent()
+    history = get_session_history(session_id)
+    a.history = history
     result = a.query(question, verbose=False)
+    sessions[session_id] = a.history[:]
 
     v = result.get("verification")
-    response = {
+    resp = {
         "answer": result["answer"],
         "sources": result["sources"],
         "faithfulness": round(v.faithfulness_score, 2) if v else None,
@@ -68,7 +94,28 @@ async def api_query(request: Request):
         "retrieve_time": result["retrieve_time"],
         "generate_time": result["generate_time"],
     }
-    return JSONResponse(response)
+    return JSONResponse(resp)
+
+
+@app.post("/api/query/stream")
+async def api_query_stream(request: Request):
+    body = await request.json()
+    question = body.get("question", "").strip()
+    session_id = body.get("session_id", "default")
+    if not question:
+        return JSONResponse({"error": "No question provided"}, status_code=400)
+
+    a = get_agent()
+    history = get_session_history(session_id)
+    a.history = history
+
+    def event_stream():
+        for chunk in a.query_stream(question):
+            yield "data: " + json.dumps(chunk) + "\n\n"
+        sessions[session_id] = a.history[:]
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/api/ingest")
@@ -90,6 +137,7 @@ def api_status():
         "index_size": a.store.size,
         "web_search": WEB_SEARCH_ENABLED and a.web_search is not None,
         "verification_threshold": FAITHFULNESS_THRESHOLD,
+        "active_sessions": len(sessions),
     })
 
 
@@ -132,10 +180,33 @@ async def api_memory_update(request: Request):
     return JSONResponse({"error": "Unknown action"}, status_code=400)
 
 
+@app.get("/api/models")
+def api_models():
+    models = []
+    for filename, info in AVAILABLE_MODELS.items():
+        path = MODELS_DIR / filename
+        models.append({
+            "filename": filename,
+            "name": info["name"],
+            "size": info["size"],
+            "ram": info["ram"],
+            "repo": info["repo"],
+            "downloaded": path.exists(),
+        })
+    return JSONResponse(models)
+
+
 @app.post("/api/clear_history")
-async def api_clear_history():
+async def api_clear_history(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    session_id = body.get("session_id", "default")
+    if session_id in sessions:
+        sessions[session_id] = []
     a = get_agent()
-    a.clear_history()
+    a.history = []
     return JSONResponse({"status": "ok"})
 
 

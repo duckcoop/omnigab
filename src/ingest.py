@@ -171,3 +171,10 @@ def save_metadata(chunks: list[Chunk], path: Path):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
     print(f"Metadata saved to {path}")
+
+
+def load_metadata(path: Path) -> list[Chunk]:
+    """Load chunk metadata from JSON file."""
+    with open(path, "r") as f:
+        data = json.load(f)
+    return [Chunk.from_dict(d) for d in data]

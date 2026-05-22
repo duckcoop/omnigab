@@ -17,6 +17,7 @@ from dataclasses import dataclass, asdict
 from typing import Optional
 
 from config import MODELS_DIR, GGUF_MODEL_PATH, DOCS_DIR
+from url_safety import is_safe_url
 
 try:
     from ddgs import DDGS
@@ -91,8 +92,16 @@ def find_resume_in_docs() -> Optional[Path]:
     """Look for a resume file in the docs directory."""
     if not DOCS_DIR.exists():
         return None
+    docs_root = DOCS_DIR.resolve()
     resume_keywords = ["resume", "cv", "curriculum"]
     for file_path in DOCS_DIR.rglob("*"):
+        if file_path.is_symlink():
+            continue
+        try:
+            if not file_path.resolve().is_relative_to(docs_root):
+                continue
+        except OSError:
+            continue
         if file_path.is_file():
             name_lower = file_path.stem.lower()
             if any(kw in name_lower for kw in resume_keywords):
@@ -105,11 +114,14 @@ def _scrape_job_page(url, timeout=8):
     if not HAS_SCRAPER:
         return None
 
+    if not is_safe_url(url):
+        return None
+
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=False)
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")

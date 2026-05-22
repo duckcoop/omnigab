@@ -6,14 +6,17 @@ adjust chunk sizes, or tune retrieval parameters.
 """
 
 import os
+import json
 from pathlib import Path
 
 # -- Paths --
 PROJECT_ROOT = Path(__file__).parent
-DOCS_DIR = PROJECT_ROOT.parent / "data" / "docs"
+DATA_DIR = PROJECT_ROOT.parent / "data"
+DOCS_DIR = DATA_DIR / "docs"
 VECTORSTORE_DIR = PROJECT_ROOT.parent / "vectorstore"
 INDEX_PATH = VECTORSTORE_DIR / "faiss_index"
 METADATA_PATH = VECTORSTORE_DIR / "metadata.json"
+MODEL_STATE_PATH = DATA_DIR / "model_state.json"
 
 # -- Document Processing --
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".log", ".cfg", ".ini", ".yaml", ".yml", ".json", ".csv"}
@@ -57,7 +60,33 @@ AVAILABLE_MODELS = {
     },
 }
 MODELS_DIR = PROJECT_ROOT.parent / "models"
-GGUF_MODEL_PATH = MODELS_DIR / "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+DEFAULT_GGUF_MODEL = "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+
+
+def _load_selected_model() -> str:
+    """Read the currently selected model from the state file, if any."""
+    try:
+        if MODEL_STATE_PATH.exists():
+            with open(MODEL_STATE_PATH, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            filename = state.get("filename", "")
+            if filename in AVAILABLE_MODELS:
+                return filename
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    return DEFAULT_GGUF_MODEL
+
+
+def save_selected_model(filename: str) -> None:
+    """Persist the user-selected model. Caller must validate against AVAILABLE_MODELS."""
+    if filename not in AVAILABLE_MODELS:
+        raise ValueError("Unknown model filename")
+    MODEL_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(MODEL_STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump({"filename": filename}, f, indent=2)
+
+
+GGUF_MODEL_PATH = MODELS_DIR / _load_selected_model()
 CONTEXT_WINDOW = 8192
 N_THREADS = 8       # match your physical core count (Ryzen 9850X3D = 8 cores)
 

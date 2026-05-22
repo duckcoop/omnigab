@@ -75,7 +75,17 @@ def load_documents(docs_dir: Optional[Path] = None) -> list[tuple[str, str]]:
         print("Add your IT documentation files there and run again.")
         return documents
 
+    docs_root = docs_dir.resolve()
     for file_path in sorted(docs_dir.rglob("*")):
+        if file_path.is_symlink():
+            continue
+        try:
+            resolved = file_path.resolve()
+        except OSError:
+            continue
+        if not resolved.is_relative_to(docs_root):
+            print(f"  Skipped {file_path.name}: resolves outside docs directory")
+            continue
         if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
             try:
                 if file_path.suffix.lower() == ".pdf":

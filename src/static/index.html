@@ -3,770 +3,1459 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Local RAG Agent</title>
+<title>RAG Agent v2.0</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0a0a0a;--bg2:#111;--bg3:#181818;--border:#222;--border2:#333;--text:#e0e0e0;--text2:#999;--text3:#666;--accent:#4a9eff;--accent2:#3a8eef;--green:#2ecc71;--yellow:#f39c12;--red:#e74c3c;--orange:#ff8c00}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
-/* Top nav bar */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
-.topbar-left{display:flex;align-items:center;gap:16px}
-.topbar-left h1{font-size:15px;font-weight:600;color:#fff;letter-spacing:-0.3px}
-.topbar-left .dot{width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:-10px}
-.tabs{display:flex;gap:2px}
-.tab{padding:8px 16px;font-size:13px;color:var(--text2);cursor:pointer;border-radius:6px;transition:all .15s;border:none;background:none;font-family:inherit}
-.tab:hover{color:#fff;background:rgba(255,255,255,.06)}
-.tab.active{color:#fff;background:rgba(74,158,255,.12);font-weight:500}
-.topbar-right{display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text3)}
-.topbar-right .badge{padding:2px 8px;border-radius:4px;background:var(--bg3);border:1px solid var(--border)}
-/* Content area */
-.content{flex:1;overflow:hidden;display:flex;flex-direction:column}
-.page{display:none;flex:1;overflow:hidden;flex-direction:column}
-.page.active{display:flex}
-/* ===== CHAT TAB ===== */
-.chat-container{flex:1;overflow:hidden;display:flex;flex-direction:column}
-.chat-messages{flex:1;overflow-y:auto;padding:20px;max-width:800px;width:100%;margin:0 auto}
-.msg{margin-bottom:16px;animation:fadeIn .2s}
-@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-.msg-user{display:flex;justify-content:flex-end}
-.msg-user .bubble{background:var(--accent);color:#fff;border-radius:16px 16px 4px 16px;padding:10px 16px;max-width:70%;font-size:14px;line-height:1.5}
-.msg-ai{display:flex;justify-content:flex-start}
-.msg-ai .bubble{background:var(--bg3);border:1px solid var(--border);border-radius:16px 16px 16px 4px;padding:12px 16px;max-width:80%;font-size:14px;line-height:1.6}
-.msg-meta{font-size:11px;color:var(--text3);margin-top:4px;padding:0 4px}
-.msg-sources{font-size:12px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
-.msg-sources summary{cursor:pointer;color:var(--text2)}
-.chat-input-area{padding:12px 20px 16px;border-top:1px solid var(--border);background:var(--bg)}
-.chat-input-row{max-width:800px;margin:0 auto;display:flex;gap:8px}
-.chat-input{flex:1;padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:none;min-height:44px;max-height:120px}
-.chat-input:focus{border-color:var(--accent)}
-.chat-input::placeholder{color:var(--text3)}
-.send-btn{padding:0 20px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:14px;cursor:pointer;transition:background .15s;font-family:inherit}
-.send-btn:hover{background:var(--accent2)}
-.send-btn:disabled{background:var(--border);color:var(--text3);cursor:not-allowed}
-.chat-actions{max-width:800px;margin:6px auto 0;display:flex;gap:8px}
-.chat-action-btn{font-size:11px;color:var(--text3);background:none;border:1px solid var(--border);padding:3px 10px;border-radius:6px;cursor:pointer;font-family:inherit}
-.chat-action-btn:hover{color:var(--text);border-color:var(--border2)}
-/* ===== JOBS TAB ===== */
-.jobs-container{flex:1;overflow-y:auto;padding:24px;max-width:900px;width:100%;margin:0 auto}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
-.card h2{font-size:15px;font-weight:600;color:#fff;margin-bottom:12px}
-.form-row{display:flex;gap:10px;margin-bottom:10px}
-.form-group{flex:1}
-.form-group label{display:block;font-size:11px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px}
-.input{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
-.input:focus{border-color:var(--accent)}
-.input::placeholder{color:var(--text3)}
-textarea.input{min-height:80px;resize:vertical}
-.btn{padding:9px 18px;border:none;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s;font-family:inherit}
-.btn-primary{background:var(--accent);color:#fff}
-.btn-primary:hover{background:var(--accent2)}
-.btn-primary:disabled{background:var(--border);color:var(--text3);cursor:not-allowed}
-.btn-ghost{background:none;color:var(--text2);border:1px solid var(--border)}
-.btn-ghost:hover{color:#fff;border-color:var(--border2)}
-.btn-sm{padding:5px 12px;font-size:12px}
-.progress-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;display:none}
-.progress-box.active{display:block}
-.progress-text{font-size:13px;color:var(--text2);margin-bottom:8px}
-.pbar{width:100%;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
-.pbar-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s;width:0%}
-.job-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:10px;display:flex;gap:14px;transition:border-color .15s}
-.job-card:hover{border-color:var(--border2)}
-.job-score{font-size:26px;font-weight:700;min-width:44px;text-align:center;padding-top:2px}
-.score-hi{color:var(--green)}.score-md{color:var(--yellow)}.score-lo{color:var(--red)}
-.job-detail{flex:1}
-.job-detail h3{font-size:14px;font-weight:600;color:#fff;margin-bottom:3px}
-.job-detail .meta{font-size:12px;color:var(--text2);margin-bottom:6px}
-.job-detail .meta span{margin-right:12px}
-.job-detail .reason{font-size:12px;color:var(--text2);font-style:italic;margin-bottom:4px}
-.job-detail a{font-size:11px;color:var(--accent);text-decoration:none}
-.job-detail a:hover{text-decoration:underline}
-/* ===== DOCUMENTS TAB ===== */
-.docs-container{flex:1;overflow-y:auto;padding:24px;max-width:900px;width:100%;margin:0 auto}
-.doc-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px}
-.doc-row:last-child{border-bottom:none}
-.doc-name{color:var(--text);flex:1}
-.doc-ext{color:var(--accent);font-size:11px;margin-right:12px;background:rgba(74,158,255,.1);padding:2px 6px;border-radius:4px}
-.doc-size{color:var(--text3);font-size:12px}
-.docs-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-.docs-stats{font-size:12px;color:var(--text3)}
-/* ===== MODELS TAB ===== */
-.models-container{flex:1;overflow-y:auto;padding:24px;max-width:900px;width:100%;margin:0 auto}
-.model-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;transition:border-color .15s}
-.model-card:hover{border-color:var(--border2)}
-.model-card.active-model{border-color:var(--green)}
-.model-info h3{font-size:14px;font-weight:600;color:#fff;margin-bottom:2px}
-.model-info .specs{font-size:12px;color:var(--text2)}
-.model-info .specs span{margin-right:12px}
-.model-status{display:flex;align-items:center;gap:8px}
-.model-badge{font-size:11px;padding:4px 10px;border-radius:6px;font-weight:500}
-.badge-active{background:rgba(46,204,113,.15);color:var(--green);border:1px solid rgba(46,204,113,.3)}
-.badge-downloaded{background:rgba(74,158,255,.1);color:var(--accent);border:1px solid rgba(74,158,255,.2)}
-.badge-missing{background:rgba(255,255,255,.05);color:var(--text3);border:1px solid var(--border)}
-/* ===== SETTINGS TAB ===== */
-.settings-container{flex:1;overflow-y:auto;padding:24px;max-width:700px;width:100%;margin:0 auto}
-.setting-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.setting-row label{font-size:13px;color:var(--text2);min-width:100px}
-.setting-row .input{max-width:300px}
-.instructions-list{margin-top:8px}
-.instruction-item{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;font-size:13px}
-.instruction-item span{flex:1}
-.instruction-item button{background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px}
-/* ===== DEVELOPER TAB ===== */
-.dev-container{flex:1;overflow-y:auto;padding:24px;max-width:900px;width:100%;margin:0 auto}
-.dev-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-.dev-stat{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px}
-.dev-stat .label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-.dev-stat .value{font-size:16px;font-weight:600;color:#fff}
-.dev-stat .value.small{font-size:13px;font-weight:400;color:var(--text)}
-.api-table{width:100%;border-collapse:collapse;font-size:13px}
-.api-table th{text-align:left;padding:8px 12px;background:var(--bg3);color:var(--text2);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-.api-table td{padding:8px 12px;border-bottom:1px solid var(--border)}
-.api-method{font-weight:600;font-size:11px;padding:2px 6px;border-radius:4px}
-.api-get{background:rgba(46,204,113,.15);color:var(--green)}
-.api-post{background:rgba(74,158,255,.15);color:var(--accent)}
-.api-path{font-family:"SF Mono",Consolas,monospace;font-size:12px;color:var(--text)}
-.bench-result{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:12px;font-size:13px;display:none}
-.bench-result.active{display:block}
-/* Scrollbar */
-::-webkit-scrollbar{width:6px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:#555}
-/* Empty state */
-.empty{text-align:center;padding:60px 20px;color:var(--text3)}
-.empty h3{font-size:16px;color:var(--text2);margin-bottom:6px}
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Fira+Code:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg: #0a0e14;
+    --bg-surface: #0d1117;
+    --bg-raised: #131921;
+    --bg-input: #0b0f15;
+    --border: #1e2a3a;
+    --border-focus: #39ff14;
+    --text: #c5cdd8;
+    --text-dim: #5a6577;
+    --text-bright: #e6edf5;
+    --green: #39ff14;
+    --green-dim: #1a7a0a;
+    --green-glow: rgba(57, 255, 20, 0.15);
+    --amber: #ffb700;
+    --amber-dim: rgba(255, 183, 0, 0.15);
+    --red: #ff3b30;
+    --red-dim: rgba(255, 59, 48, 0.1);
+    --cyan: #00d4ff;
+    --cyan-dim: rgba(0, 212, 255, 0.1);
+    --purple: #a78bfa;
+    --blue: #58a6ff;
+    --font: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+    --scanline: rgba(57, 255, 20, 0.03);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  /* CRT scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      var(--scanline) 2px,
+      var(--scanline) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  /* Layout */
+  .shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* Top bar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .topbar-logo {
+    color: var(--green);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px var(--green-glow);
+    white-space: nowrap;
+  }
+
+  .topbar-logo .ver {
+    color: var(--text-dim);
+    font-weight: 300;
+    font-size: 11px;
+  }
+
+  .topbar-sep {
+    color: var(--border);
+    user-select: none;
+  }
+
+  .topbar-status {
+    display: flex;
+    gap: 16px;
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .topbar-status .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+
+  .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .dot-red { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  /* Tab bar */
+  .tabbar {
+    display: flex;
+    gap: 0;
+    padding: 0 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+
+  .tab {
+    padding: 8px 18px;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 400;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    white-space: nowrap;
+    user-select: none;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .tab:hover {
+    color: var(--text);
+    background: var(--bg-surface);
+  }
+
+  .tab.active {
+    color: var(--green);
+    border-bottom-color: var(--green);
+    text-shadow: 0 0 8px var(--green-glow);
+  }
+
+  .tab .tab-icon {
+    margin-right: 6px;
+    font-size: 11px;
+  }
+
+  /* Main content area */
+  .main {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .panel {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .panel.active {
+    display: flex;
+  }
+
+  /* ====== CHAT PANEL ====== */
+  .chat-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .msg {
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    border-radius: 4px;
+    max-width: 90%;
+    position: relative;
+  }
+
+  .msg.user {
+    background: var(--bg-raised);
+    border-left: 3px solid var(--cyan);
+    margin-left: auto;
+    max-width: 80%;
+  }
+
+  .msg.user::before {
+    content: 'user@local $';
+    display: block;
+    color: var(--cyan);
+    font-size: 11px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .msg.bot {
+    background: var(--bg-surface);
+    border-left: 3px solid var(--green);
+  }
+
+  .msg.bot::before {
+    content: 'rag-agent >';
+    display: block;
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .msg-meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+
+  .msg-meta span { white-space: nowrap; }
+  .meta-good { color: var(--green); }
+  .meta-warn { color: var(--amber); }
+  .meta-bad { color: var(--red); }
+
+  .sources-toggle {
+    color: var(--blue);
+    cursor: pointer;
+    font-size: 11px;
+    margin-top: 6px;
+    display: inline-block;
+  }
+
+  .sources-toggle:hover { text-decoration: underline; }
+
+  .sources-list {
+    display: none;
+    margin-top: 6px;
+    padding: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 11px;
+  }
+
+  .sources-list.open { display: block; }
+
+  .source-item {
+    padding: 3px 0;
+    color: var(--text-dim);
+  }
+
+  .source-item .src-file { color: var(--amber); }
+  .source-item .src-score { color: var(--green); }
+
+  /* Chat input */
+  .chat-input-area {
+    padding: 12px 16px;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .prompt-char {
+    color: var(--green);
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+    text-shadow: 0 0 8px var(--green-glow);
+  }
+
+  .chat-input {
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 12px;
+    color: var(--text-bright);
+    font-family: var(--font);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .chat-input:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 0 1px var(--green-glow);
+  }
+
+  .chat-input::placeholder { color: var(--text-dim); }
+
+  .send-btn {
+    background: transparent;
+    border: 1px solid var(--green);
+    color: var(--green);
+    padding: 8px 16px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .send-btn:hover {
+    background: var(--green);
+    color: var(--bg);
+    box-shadow: 0 0 12px var(--green-glow);
+  }
+
+  .send-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .typing-indicator {
+    display: none;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    color: var(--green);
+    font-size: 12px;
+  }
+
+  .typing-indicator.visible { display: block; }
+
+  .blink {
+    animation: blink 1s steps(1) infinite;
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* ====== SHARED PANEL STYLES ====== */
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+
+  .section-header {
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-header::before {
+    content: '# ';
+    color: var(--text-dim);
+  }
+
+  .kv-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 16px;
+    font-size: 12px;
+    margin-bottom: 20px;
+  }
+
+  .kv-key {
+    color: var(--text-dim);
+    text-align: right;
+  }
+
+  .kv-key::after { content: ':'; }
+
+  .kv-val { color: var(--text-bright); }
+  .kv-val.green { color: var(--green); }
+  .kv-val.amber { color: var(--amber); }
+  .kv-val.red { color: var(--red); }
+  .kv-val.cyan { color: var(--cyan); }
+
+  /* Card grid */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    transition: border-color 0.2s;
+  }
+
+  .card:hover { border-color: var(--text-dim); }
+
+  .card-title {
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  .card-meta .val { color: var(--text); }
+
+  /* Action buttons */
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .action-btn:hover {
+    border-color: var(--green);
+    color: var(--green);
+    background: var(--green-glow);
+  }
+
+  .action-btn.primary {
+    border-color: var(--green);
+    color: var(--green);
+  }
+
+  .action-btn.primary:hover {
+    background: var(--green);
+    color: var(--bg);
+  }
+
+  .action-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .action-btn.danger:hover {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-dim);
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* Table */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+
+  .data-table th {
+    text-align: left;
+    color: var(--text-dim);
+    font-weight: 500;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+  }
+
+  .data-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .data-table tr:hover td { background: var(--bg-raised); }
+
+  /* Toast/notification */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 9998;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s;
+  }
+
+  .toast.show {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  .toast.success {
+    background: var(--green-dim);
+    border: 1px solid var(--green);
+    color: var(--green);
+  }
+
+  .toast.error {
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    color: var(--red);
+  }
+
+  /* Memory input */
+  .mem-input {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 6px 10px;
+    color: var(--text-bright);
+    font-family: var(--font);
+    font-size: 12px;
+    outline: none;
+    width: 100%;
+  }
+
+  .mem-input:focus {
+    border-color: var(--green);
+  }
+
+  /* Jobs specific */
+  .job-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+
+  .job-title { color: var(--green); font-weight: 500; font-size: 13px; }
+  .job-company { color: var(--amber); font-size: 12px; margin-top: 2px; }
+  .job-location { color: var(--text-dim); font-size: 11px; }
+  .job-salary { color: var(--cyan); font-size: 12px; margin-top: 4px; }
+  .job-score { font-size: 12px; margin-top: 6px; }
+  .job-reason { color: var(--text-dim); font-size: 11px; margin-top: 4px; line-height: 1.5; }
+  .job-link { color: var(--blue); font-size: 11px; text-decoration: none; }
+  .job-link:hover { text-decoration: underline; }
+
+  .score-high { color: var(--green); }
+  .score-mid { color: var(--amber); }
+  .score-low { color: var(--red); }
+
+  /* Textarea */
+  .code-textarea {
+    width: 100%;
+    min-height: 100px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px;
+    color: var(--text-bright);
+    font-family: var(--font);
+    font-size: 12px;
+    resize: vertical;
+    outline: none;
+  }
+
+  .code-textarea:focus { border-color: var(--green); }
+
+  /* Progress */
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 8px 0;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* API table */
+  .api-row td:first-child {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .method-get { color: var(--green); }
+  .method-post { color: var(--amber); }
+
+  /* Log console */
+  .log-console {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 11px;
+    margin-top: 12px;
+  }
+
+  .log-line { padding: 2px 0; }
+  .log-info { color: var(--text-dim); }
+  .log-ok { color: var(--green); }
+  .log-warn { color: var(--amber); }
+  .log-err { color: var(--red); }
+  .log-time { color: var(--text-dim); margin-right: 8px; }
+
+  /* Welcome */
+  .welcome-block {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+  }
+
+  .welcome-ascii {
+    color: var(--green);
+    font-size: 11px;
+    line-height: 1.3;
+    margin-bottom: 16px;
+    text-shadow: 0 0 10px var(--green-glow);
+    white-space: pre;
+  }
+
+  .welcome-sub {
+    font-size: 12px;
+    color: var(--text-dim);
+    max-width: 400px;
+    margin: 0 auto;
+  }
+
+  .welcome-hints {
+    margin-top: 16px;
+    font-size: 11px;
+  }
+
+  .welcome-hints span {
+    display: inline-block;
+    margin: 4px 6px;
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .welcome-hints span:hover {
+    border-color: var(--green);
+    color: var(--green);
+    background: var(--green-glow);
+  }
+
+  /* File list item */
+  .file-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .file-name { color: var(--amber); }
+  .file-size { color: var(--text-dim); }
+  .file-ext { color: var(--cyan); }
 </style>
 </head>
 <body>
+<div class="shell">
 
-<!-- TOP BAR -->
-<div class="topbar">
-    <div class="topbar-left">
-        <span class="dot"></span>
-        <h1>Local RAG Agent</h1>
-        <div class="tabs">
-            <button class="tab active" onclick="switchTab('chat')">Chat</button>
-            <button class="tab" onclick="switchTab('jobs')">Jobs</button>
-            <button class="tab" onclick="switchTab('docs')">Documents</button>
-            <button class="tab" onclick="switchTab('models')">Models</button>
-            <button class="tab" onclick="switchTab('settings')">Settings</button>
-            <button class="tab" onclick="switchTab('dev')">Developer</button>
-        </div>
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-logo">RAG_AGENT <span class="ver">v2.0</span></div>
+    <span class="topbar-sep">|</span>
+    <span style="color:var(--text-dim);font-size:11px" id="topbarModel">loading...</span>
+    <div class="topbar-status">
+      <span id="statusIndex"><span class="dot dot-amber"></span>index: --</span>
+      <span id="statusWeb"><span class="dot dot-amber"></span>web: --</span>
+      <span id="statusSessions"><span class="dot dot-green"></span>session: active</span>
     </div>
-    <div class="topbar-right">
-        <span class="badge" id="topModel">Loading...</span>
-        <span class="badge" id="topIndex">Index: ...</span>
-    </div>
-</div>
+  </div>
 
-<div class="content">
+  <!-- Tab Bar -->
+  <div class="tabbar">
+    <div class="tab active" onclick="switchTab('chat')"><span class="tab-icon">></span>Chat</div>
+    <div class="tab" onclick="switchTab('jobs')"><span class="tab-icon">></span>Jobs</div>
+    <div class="tab" onclick="switchTab('docs')"><span class="tab-icon">></span>Docs</div>
+    <div class="tab" onclick="switchTab('models')"><span class="tab-icon">></span>Models</div>
+    <div class="tab" onclick="switchTab('settings')"><span class="tab-icon">></span>Settings</div>
+    <div class="tab" onclick="switchTab('dev')"><span class="tab-icon">></span>Developer</div>
+  </div>
 
-<!-- ==================== CHAT PAGE ==================== -->
-<div class="page active" id="page-chat">
-<div class="chat-container">
-    <div class="chat-messages" id="chatMessages">
-        <div class="empty" id="chatEmpty">
-            <h3>Ask anything about your documents</h3>
-            <p>Your AI assistant searches local docs and the web to answer questions.</p>
-        </div>
-    </div>
-    <div class="chat-input-area">
-        <div class="chat-input-row">
-            <textarea class="chat-input" id="chatInput" placeholder="Ask a question..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"></textarea>
-            <button class="send-btn" id="sendBtn" onclick="sendChat()">Send</button>
-        </div>
-        <div class="chat-actions">
-            <button class="chat-action-btn" onclick="clearHistory()">Clear history</button>
-        </div>
-    </div>
-</div>
-</div>
+  <!-- Main content -->
+  <div class="main">
 
-<!-- ==================== JOBS PAGE ==================== -->
-<div class="page" id="page-jobs">
-<div class="jobs-container">
-    <div class="card">
-        <h2>Find Jobs That Match Your Resume</h2>
-        <div style="margin-bottom:12px">
-            <label style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Resume</label>
-            <textarea class="input" id="resumeText" placeholder="Paste your resume here, or leave blank to auto-detect from your data/docs/ folder..." style="margin-top:4px"></textarea>
-            <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
-                <button class="btn btn-ghost btn-sm" onclick="uploadResume()">Load Resume</button>
-                <span id="resumeStatus" style="font-size:11px;color:var(--text3)">No resume loaded</span>
-            </div>
+    <!-- ====== CHAT ====== -->
+    <div class="panel active" id="panel-chat">
+      <div class="chat-output" id="chatOutput">
+        <div class="welcome-block">
+          <div class="welcome-ascii">
+ ____      _     ____        _                    _
+|  _ \    / \   / ___|      / \     __ _    ___  | |_
+| |_) |  / _ \ | |  _      / _ \   / _` |  / _ \ | __|
+|  _ <  / ___ \| |_| |    / ___ \ | (_| | |  __/ | |_
+|_| \_\/_/   \_\\____|   /_/   \_\ \__, |  \___|  \__|
+                                    |___/
+          </div>
+          <div class="welcome-sub">
+            Local retrieval-augmented generation with verification layer.
+            Ask questions about your ingested documents.
+          </div>
+          <div class="welcome-hints">
+            <span onclick="fillQuery('How do I reset a user password?')">password reset</span>
+            <span onclick="fillQuery('What is the VPN configuration?')">VPN setup</span>
+            <span onclick="fillQuery('How do I set up a new workstation?')">new workstation</span>
+          </div>
         </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Job Title / Keywords</label>
-                <input class="input" id="jobTitle" placeholder="e.g. Python Developer, IT Support">
-            </div>
-            <div class="form-group">
-                <label>Location</label>
-                <input class="input" id="jobLocation" placeholder="e.g. Frederick MD, Remote">
-            </div>
+      </div>
+      <div class="typing-indicator" id="typingIndicator">
+        <span>rag-agent processing</span><span class="blink">_</span>
+      </div>
+      <div class="chat-input-area">
+        <div class="input-row">
+          <span class="prompt-char">$</span>
+          <input type="text" class="chat-input" id="chatInput" placeholder="enter query..." autocomplete="off"
+                 onkeydown="if(event.key==='Enter')sendQuery()">
+          <button class="send-btn" id="sendBtn" onclick="sendQuery()">EXEC</button>
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
-            <button class="btn btn-primary" id="jobSearchBtn" onclick="startJobSearch()">Search Jobs</button>
-            <span id="jobHint" style="font-size:12px;color:var(--text3)"></span>
-        </div>
+      </div>
     </div>
-    <div class="progress-box" id="jobProgress">
-        <div class="progress-text" id="jobProgressText">Searching...</div>
-        <div class="pbar"><div class="pbar-fill" id="jobProgressBar"></div></div>
-    </div>
-    <div id="jobResultsHeader" style="display:none;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:14px;font-weight:600;color:#fff" id="jobResultsTitle"></span>
-            <button class="btn btn-ghost btn-sm" onclick="window.open('/api/jobs/pdf','_blank')">Download PDF</button>
-        </div>
-    </div>
-    <div id="jobResults"></div>
-</div>
-</div>
 
-<!-- ==================== DOCUMENTS PAGE ==================== -->
-<div class="page" id="page-docs">
-<div class="docs-container">
-    <div class="card">
-        <div class="docs-header">
-            <h2>Your Documents</h2>
-            <div style="display:flex;gap:8px;align-items:center">
-                <span class="docs-stats" id="docsStats"></span>
-                <button class="btn btn-primary btn-sm" onclick="reIngest()">Re-index</button>
-            </div>
-        </div>
-        <div id="docsList" style="margin-top:12px"></div>
-    </div>
-    <div class="card">
-        <h2>How It Works</h2>
-        <p style="font-size:13px;color:var(--text2);line-height:1.6">
-            Drop your files (.txt, .md, .pdf, .json, .csv, .yaml, .log, .cfg, .ini) into the <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:12px">data/docs/</code> folder, then click Re-index. The agent splits documents into chunks, generates embeddings, and stores them in a FAISS vector index for fast retrieval.
+    <!-- ====== JOBS ====== -->
+    <div class="panel" id="panel-jobs">
+      <div class="panel-body">
+        <div class="section-header">Job Search Agent</div>
+        <p style="color:var(--text-dim);font-size:12px;margin-bottom:16px;">
+          Search Indeed for jobs matching your resume. The local LLM scores each listing 0-100.
         </p>
-    </div>
-</div>
-</div>
 
-<!-- ==================== MODELS PAGE ==================== -->
-<div class="page" id="page-models">
-<div class="models-container">
-    <div class="card" style="margin-bottom:20px">
-        <h2>Model Manager</h2>
-        <p style="font-size:13px;color:var(--text2);line-height:1.6">
-            Switch between models or download new ones. Larger models produce better answers but use more RAM and run slower. After switching, restart the web app to load the new model.
+        <div style="margin-bottom:16px;">
+          <label style="color:var(--text-dim);font-size:11px;display:block;margin-bottom:4px;">RESUME TEXT</label>
+          <textarea class="code-textarea" id="resumeText" rows="4" placeholder="Paste your resume text here, or it will auto-load from data/docs/"></textarea>
+          <div class="btn-row">
+            <button class="action-btn" onclick="uploadResume()">Upload Resume</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <input class="mem-input" id="jobTitle" placeholder="Job title (e.g. Systems Administrator)" style="flex:1;min-width:200px;">
+          <input class="mem-input" id="jobLocation" placeholder="Location (e.g. Remote)" style="width:160px;">
+          <input class="mem-input" id="jobCount" type="number" value="10" min="1" max="25" style="width:70px;" title="Number of results">
+          <button class="action-btn primary" id="jobSearchBtn" onclick="searchJobs()">Search</button>
+        </div>
+
+        <div id="jobProgress" style="display:none;">
+          <div class="progress-bar"><div class="progress-fill" id="jobProgressFill"></div></div>
+          <div id="jobProgressText" style="font-size:11px;color:var(--text-dim);"></div>
+        </div>
+
+        <div id="jobResults"></div>
+
+        <div id="jobPdfBtn" style="display:none;margin-top:12px;">
+          <button class="action-btn primary" onclick="downloadJobPdf()">Download PDF Report</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== DOCS ====== -->
+    <div class="panel" id="panel-docs">
+      <div class="panel-body">
+        <div class="section-header">Document Index</div>
+        <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px;">
+          Files in data/docs/ are chunked, embedded, and stored in the FAISS vector index.
         </p>
+        <div class="btn-row" style="margin-bottom:16px;">
+          <button class="action-btn primary" onclick="reindex()">Re-Index Documents</button>
+          <button class="action-btn" onclick="loadDocs()">Refresh List</button>
+        </div>
+        <div id="reindexLog" class="log-console" style="display:none;"></div>
+        <div id="docsInfo" style="font-size:11px;color:var(--text-dim);margin-bottom:12px;"></div>
+        <div id="docsList"></div>
+      </div>
     </div>
-    <div id="modelsList"></div>
-    <div id="modelSwitchMsg" style="display:none;margin-top:12px;padding:12px;background:rgba(46,204,113,.1);border:1px solid rgba(46,204,113,.3);border-radius:8px;font-size:13px;color:var(--green)"></div>
-</div>
-</div>
 
-<!-- ==================== SETTINGS PAGE ==================== -->
-<div class="page" id="page-settings">
-<div class="settings-container">
-    <div class="card">
-        <h2>Preferences</h2>
-        <div class="setting-row">
-            <label>Location</label>
-            <input class="input" id="setLocation" placeholder="e.g. Frederick, MD" style="max-width:280px">
-            <button class="btn btn-ghost btn-sm" onclick="saveSetting('location',document.getElementById('setLocation').value)">Save</button>
-        </div>
-        <div class="setting-row">
-            <label>Units</label>
-            <select class="input" id="setUnits" style="max-width:280px" onchange="saveSetting('units',this.value)">
-                <option value="">Not set</option>
-                <option value="imperial">Imperial (F, miles)</option>
-                <option value="metric">Metric (C, km)</option>
-            </select>
-        </div>
+    <!-- ====== MODELS ====== -->
+    <div class="panel" id="panel-models">
+      <div class="panel-body">
+        <div class="section-header">Model Manager</div>
+        <p style="color:var(--text-dim);font-size:12px;margin-bottom:16px;">
+          GGUF models for local inference via llama-cpp-python. Download new models using download_model.bat.
+        </p>
+        <div id="modelsList" class="card-grid"></div>
+      </div>
     </div>
-    <div class="card">
-        <h2>Custom Instructions</h2>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Tell the agent how to behave (e.g. "always give short answers", "don't use Celsius")</p>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-            <input class="input" id="newInstruction" placeholder="Add an instruction..." style="flex:1">
-            <button class="btn btn-primary btn-sm" onclick="addInstruction()">Add</button>
-        </div>
-        <div class="instructions-list" id="instructionsList"></div>
-    </div>
-    <div class="card">
-        <h2>Memory</h2>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Facts the agent has learned about you during conversations.</p>
-        <div id="factsList" style="margin-bottom:10px"></div>
-        <button class="btn btn-ghost btn-sm" onclick="clearMemory()" style="color:var(--red)">Clear all memory</button>
-    </div>
-</div>
-</div>
 
-<!-- ==================== DEVELOPER PAGE ==================== -->
-<div class="page" id="page-dev">
-<div class="dev-container">
-    <div class="card" style="margin-bottom:16px">
-        <h2>System Info</h2>
-        <div class="dev-grid" id="sysInfo" style="margin-top:12px"></div>
+    <!-- ====== SETTINGS ====== -->
+    <div class="panel" id="panel-settings">
+      <div class="panel-body">
+        <div class="section-header">User Memory</div>
+        <p style="color:var(--text-dim);font-size:12px;margin-bottom:16px;">
+          Persistent preferences injected into every query context.
+        </p>
+
+        <div style="margin-bottom:20px;">
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input class="mem-input" id="memKey" placeholder="key (e.g. location)" style="width:160px;">
+            <input class="mem-input" id="memVal" placeholder="value" style="flex:1;">
+            <button class="action-btn primary" onclick="setMemory()">Set</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input class="mem-input" id="memInstruction" placeholder="Custom instruction (e.g. always respond in Spanish)" style="flex:1;">
+            <button class="action-btn" onclick="addInstruction()">Remember</button>
+          </div>
+        </div>
+
+        <div class="section-header">Current Memory</div>
+        <div id="memoryDisplay" style="font-size:12px;color:var(--text-dim);">Loading...</div>
+
+        <div class="btn-row" style="margin-top:16px;">
+          <button class="action-btn" onclick="loadMemory()">Refresh</button>
+          <button class="action-btn danger" onclick="clearMemory()">Clear All</button>
+          <button class="action-btn danger" onclick="clearHistory()">Clear Chat History</button>
+        </div>
+      </div>
     </div>
-    <div class="card" style="margin-bottom:16px">
-        <h2>Benchmark</h2>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Run a quick inference test to measure your model's speed.</p>
-        <button class="btn btn-primary btn-sm" id="benchBtn" onclick="runBenchmark()">Run Benchmark</button>
-        <div class="bench-result" id="benchResult"></div>
-    </div>
-    <div class="card">
-        <h2>API Endpoints</h2>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:12px">All endpoints are served at <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:12px">http://localhost:8080</code></p>
-        <table class="api-table">
-            <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
-            <tbody>
-                <tr><td><span class="api-method api-get">GET</span></td><td class="api-path">/api/status</td><td>System status</td></tr>
-                <tr><td><span class="api-method api-get">GET</span></td><td class="api-path">/api/session</td><td>New chat session ID</td></tr>
-                <tr><td><span class="api-method api-post">POST</span></td><td class="api-path">/api/query</td><td>Ask a question (JSON body: question, session_id)</td></tr>
-                <tr><td><span class="api-method api-post">POST</span></td><td class="api-path">/api/query/stream</td><td>Streaming question (SSE)</td></tr>
-                <tr><td><span class="api-method api-post">POST</span></td><td class="api-path">/api/ingest</td><td>Re-index documents</td></tr>
-                <tr><td><span class="api-method api-get">GET</span></td><td class="api-path">/api/docs/list</td><td>List documents in docs folder</td></tr>
-                <tr><td><span class="api-method api-get">GET</span></td><td class="api-path">/api/models</td><td>List available models</td></tr>
-                <tr><td><span class="api-method api-post">POST</span></td><td class="api-path">/api/models/switch</td><td>Switch active model (JSON: filename)</td></tr>
-                <tr><td><span class="api-method api-get">GET</span></td><td class="api-path">/api/memory</td><td>Get user memory/preferences</td></tr>
-                <tr><td><span class="api-method api-post">POST</span></td><td class="api-path">/api/memory</td><td>Update memory (JSON: action, key, value)</td></tr>
-                <tr><td><span class="api-method api-post">POST</span></td><td class="api-path">/api/jobs/search/stream</td><td>Search jobs (SSE stream)</td></tr>
-                <tr><td><span class="api-method api-get">GET</span></td><td class="api-path">/api/jobs/pdf</td><td>Download job results PDF</td></tr>
-                <tr><td><span class="api-method api-get">GET</span></td><td class="api-path">/api/system</td><td>Full system info</td></tr>
-                <tr><td><span class="api-method api-get">GET</span></td><td class="api-path">/api/benchmark</td><td>Run inference benchmark</td></tr>
-            </tbody>
+
+    <!-- ====== DEVELOPER ====== -->
+    <div class="panel" id="panel-dev">
+      <div class="panel-body">
+        <div class="section-header">System Info</div>
+        <div class="kv-grid" id="sysInfo">
+          <span class="kv-key">status</span><span class="kv-val green">loading...</span>
+        </div>
+
+        <div class="section-header">Benchmark</div>
+        <div style="margin-bottom:20px;">
+          <button class="action-btn primary" id="benchBtn" onclick="runBenchmark()">Run Benchmark</button>
+          <div id="benchResult" style="margin-top:12px;font-size:12px;"></div>
+        </div>
+
+        <div class="section-header">API Reference</div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="method-get">GET</td><td>/api/status</td><td>Agent status overview</td></tr>
+            <tr><td class="method-get">GET</td><td>/api/system</td><td>System info</td></tr>
+            <tr><td class="method-get">GET</td><td>/api/session</td><td>Create new session</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/query</td><td>Query (non-streaming)</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/query/stream</td><td>Query (SSE streaming)</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/ingest</td><td>Re-index documents</td></tr>
+            <tr><td class="method-get">GET</td><td>/api/docs/list</td><td>List indexed documents</td></tr>
+            <tr><td class="method-get">GET</td><td>/api/models</td><td>List available models</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/models/switch</td><td>Switch active model</td></tr>
+            <tr><td class="method-get">GET</td><td>/api/memory</td><td>Get user memory</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/memory</td><td>Update user memory</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/clear_history</td><td>Clear chat history</td></tr>
+            <tr><td class="method-get">GET</td><td>/api/benchmark</td><td>Quick inference benchmark</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/jobs/search</td><td>Search jobs</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/jobs/search/stream</td><td>Search jobs (SSE)</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/jobs/upload-resume</td><td>Upload resume text</td></tr>
+            <tr><td class="method-get">GET</td><td>/api/jobs/pdf</td><td>Download job report PDF</td></tr>
+          </tbody>
         </table>
+      </div>
     </div>
-</div>
-</div>
 
-</div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<div class="toast" id="toast"></div>
 
 <script>
-// ===== STATE =====
-let sessionId = 'default';
-let resumeLoaded = false;
-let currentModel = '';
+// ============ STATE ============
+let sessionId = null;
+let isQuerying = false;
 
-// ===== TAB SWITCHING =====
+// ============ INIT ============
+document.addEventListener('DOMContentLoaded', async () => {
+  // Get session
+  try {
+    const r = await fetch('/api/session');
+    const d = await r.json();
+    sessionId = d.session_id;
+  } catch(e) { sessionId = 'default'; }
+
+  loadStatus();
+  loadSystemInfo();
+  loadMemory();
+  loadDocs();
+  loadModels();
+});
+
+// ============ TAB SWITCHING ============
 function switchTab(name) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    event.target.classList.add('active');
-    document.getElementById('page-' + name).classList.add('active');
-    // Load data for the tab
-    if (name === 'docs') loadDocs();
-    if (name === 'models') loadModels();
-    if (name === 'settings') loadMemory();
-    if (name === 'dev') loadSystemInfo();
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  // find tab
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.textContent.trim().toLowerCase().replace('>','') === name) t.classList.add('active');
+  });
+  // Focus chat input when switching to chat
+  if (name === 'chat') {
+    setTimeout(() => document.getElementById('chatInput').focus(), 100);
+  }
 }
 
-// ===== UTILITIES =====
-function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function fmtSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b/1024).toFixed(1) + ' KB'; return (b/1048576).toFixed(1) + ' MB'; }
-
-// ===== INIT =====
-async function init() {
-    // Get session
-    try {
-        const r = await fetch('/api/session');
-        const d = await r.json();
-        sessionId = d.session_id;
-    } catch(e) {}
-    // Load status bar
-    try {
-        const r = await fetch('/api/status');
-        const d = await r.json();
-        document.getElementById('topIndex').textContent = 'Index: ' + d.index_size + ' vectors';
-        document.getElementById('topModel').textContent = d.generator;
-    } catch(e) {}
+// ============ STATUS ============
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('statusIndex').innerHTML =
+      `<span class="dot ${d.index_size > 0 ? 'dot-green' : 'dot-red'}"></span>index: ${d.index_size} vectors`;
+    document.getElementById('statusWeb').innerHTML =
+      `<span class="dot ${d.web_search ? 'dot-green' : 'dot-red'}"></span>web: ${d.web_search ? 'on' : 'off'}`;
+  } catch(e) {}
 }
 
-// ===== CHAT =====
-function addMsg(role, html, meta) {
-    const empty = document.getElementById('chatEmpty');
-    if (empty) empty.style.display = 'none';
-    const chat = document.getElementById('chatMessages');
-    const div = document.createElement('div');
-    div.className = 'msg msg-' + role;
-    let inner = '<div class="bubble">' + html + '</div>';
-    if (meta) inner += '<div class="msg-meta">' + meta + '</div>';
-    div.innerHTML = inner;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-    return div;
+// ============ SYSTEM INFO ============
+async function loadSystemInfo() {
+  try {
+    const r = await fetch('/api/system');
+    const d = await r.json();
+    document.getElementById('topbarModel').textContent = d.current_model || 'no model';
+    const grid = document.getElementById('sysInfo');
+    grid.innerHTML = `
+      <span class="kv-key">platform</span><span class="kv-val">${d.platform}</span>
+      <span class="kv-key">python</span><span class="kv-val">${d.python}</span>
+      <span class="kv-key">cpu</span><span class="kv-val">${d.cpu}</span>
+      <span class="kv-key">threads</span><span class="kv-val cyan">${d.threads}</span>
+      <span class="kv-key">context window</span><span class="kv-val">${d.context_window}</span>
+      <span class="kv-key">max tokens</span><span class="kv-val">${d.max_tokens}</span>
+      <span class="kv-key">temperature</span><span class="kv-val">${d.temperature}</span>
+      <span class="kv-key">top_p</span><span class="kv-val">${d.top_p}</span>
+      <span class="kv-key">embedding</span><span class="kv-val">${d.embedding_model}</span>
+      <span class="kv-key">embedding dim</span><span class="kv-val">${d.embedding_dim}</span>
+      <span class="kv-key">active model</span><span class="kv-val green">${d.current_model}</span>
+      <span class="kv-key">use GGUF</span><span class="kv-val ${d.use_gguf ? 'green' : 'red'}">${d.use_gguf}</span>
+      <span class="kv-key">index size</span><span class="kv-val cyan">${d.index_size} vectors</span>
+      <span class="kv-key">web search</span><span class="kv-val ${d.web_search ? 'green' : 'red'}">${d.web_search}</span>
+      <span class="kv-key">faithfulness</span><span class="kv-val amber">${d.faithfulness_threshold}</span>
+      <span class="kv-key">docs dir</span><span class="kv-val">${d.docs_dir}</span>
+      <span class="kv-key">models dir</span><span class="kv-val">${d.models_dir}</span>
+    `;
+  } catch(e) {
+    document.getElementById('sysInfo').innerHTML =
+      '<span class="kv-key">error</span><span class="kv-val red">failed to load system info</span>';
+  }
 }
 
-async function sendChat() {
-    const input = document.getElementById('chatInput');
-    const btn = document.getElementById('sendBtn');
-    const q = input.value.trim();
-    if (!q) return;
-    input.value = '';
-    btn.disabled = true;
-    addMsg('user', esc(q));
+// ============ CHAT ============
+function fillQuery(text) {
+  document.getElementById('chatInput').value = text;
+  document.getElementById('chatInput').focus();
+}
 
-    const aiDiv = addMsg('ai', '<span id="streamTarget" style="opacity:.5">Thinking...</span>');
-    const bubble = aiDiv.querySelector('.bubble');
-    const target = document.getElementById('streamTarget');
+function addMessage(type, html, meta) {
+  const out = document.getElementById('chatOutput');
+  // Clear welcome on first message
+  const welcome = out.querySelector('.welcome-block');
+  if (welcome) welcome.remove();
+
+  const div = document.createElement('div');
+  div.className = 'msg ' + type;
+  div.innerHTML = html;
+
+  if (meta) {
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'msg-meta';
+    metaDiv.innerHTML = meta;
+    div.appendChild(metaDiv);
+  }
+
+  out.appendChild(div);
+  out.scrollTop = out.scrollHeight;
+  return div;
+}
+
+async function sendQuery() {
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim();
+  if (!q || isQuerying) return;
+
+  isQuerying = true;
+  input.value = '';
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('typingIndicator').classList.add('visible');
+
+  addMessage('user', escapeHtml(q));
+
+  try {
+    const botDiv = addMessage('bot', '');
+    // Remove the ::before generated content text node issue - just set innerHTML
+    const textSpan = document.createElement('span');
+    botDiv.appendChild(textSpan);
+
     let fullText = '';
     let metaData = null;
 
-    try {
-        const resp = await fetch('/api/query/stream', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({question: q, session_id: sessionId})
-        });
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = '';
-        target.style.opacity = '1';
-        target.textContent = '';
+    const response = await fetch('/api/query/stream', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: q, session_id: sessionId})
+    });
 
-        while (true) {
-            const {done, value} = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, {stream: true});
-            const lines = buf.split('\n');
-            buf = lines.pop();
-            for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const raw = line.slice(6).trim();
-                if (!raw || raw === '[DONE]') continue;
-                try {
-                    const msg = JSON.parse(raw);
-                    if (msg.type === 'token') {
-                        fullText += msg.text;
-                        target.textContent = fullText;
-                    } else if (msg.type === 'meta') {
-                        metaData = msg;
-                    }
-                } catch(e) {}
-            }
-        }
-    } catch(e) {
-        target.textContent = 'Error: ' + e.message;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === 'token') {
+            fullText += parsed.text;
+            textSpan.innerHTML = formatAnswer(fullText);
+            document.getElementById('chatOutput').scrollTop =
+              document.getElementById('chatOutput').scrollHeight;
+          } else if (parsed.type === 'meta') {
+            metaData = parsed;
+          }
+        } catch(e) {}
+      }
     }
 
-    // Finalize
-    bubble.innerHTML = esc(fullText).replace(/\n/g, '<br>');
+    // Add metadata
     if (metaData) {
-        let metaHtml = '';
-        if (metaData.tps) metaHtml += metaData.tokens + ' tokens · ' + metaData.tps + ' tok/s';
-        if (metaData.faithfulness) metaHtml += ' · faith: ' + (metaData.faithfulness * 100).toFixed(0) + '%';
-        if (metaData.retrieve_time) metaHtml += ' · retrieve: ' + metaData.retrieve_time.toFixed(2) + 's';
-        if (metaHtml) {
-            const metaEl = document.createElement('div');
-            metaEl.className = 'msg-meta';
-            metaEl.textContent = metaHtml;
-            aiDiv.appendChild(metaEl);
+      const fScore = metaData.faithfulness || 0;
+      const fClass = fScore >= 0.8 ? 'meta-good' : fScore >= 0.5 ? 'meta-warn' : 'meta-bad';
+      let metaHtml = `
+        <span class="${fClass}">faith: ${(fScore * 100).toFixed(0)}%</span>
+        <span>tokens: ${metaData.tokens || 0}</span>
+        <span>speed: ${(metaData.tps || 0).toFixed(1)} tok/s</span>
+        <span>retrieve: ${metaData.retrieve_time}s</span>
+        <span>generate: ${metaData.generate_time}s</span>
+      `;
+
+      if (metaData.sources && metaData.sources.length > 0) {
+        const srcId = 'src-' + Date.now();
+        metaHtml += `<span class="sources-toggle" onclick="document.getElementById('${srcId}').classList.toggle('open')">
+          [${metaData.sources.length} sources]</span>`;
+        let srcHtml = `<div class="sources-list" id="${srcId}">`;
+        for (const s of metaData.sources) {
+          srcHtml += `<div class="source-item">
+            <span class="src-file">${s.file}</span> chunk ${s.chunk}
+            <span class="src-score">(${(s.score * 100).toFixed(1)}%)</span>
+            </div>`;
         }
-        if (metaData.sources && metaData.sources.length > 0) {
-            const srcEl = document.createElement('div');
-            srcEl.className = 'msg-sources';
-            srcEl.innerHTML = '<details><summary>' + metaData.sources.length + ' sources</summary>' +
-                metaData.sources.map(s => '<div style="margin-top:4px">' + esc(s) + '</div>').join('') + '</details>';
-            bubble.appendChild(srcEl);
-        }
+        srcHtml += '</div>';
+        metaHtml += srcHtml;
+      }
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'msg-meta';
+      metaDiv.innerHTML = metaHtml;
+      botDiv.appendChild(metaDiv);
     }
-    btn.disabled = false;
-    input.focus();
+
+  } catch(e) {
+    addMessage('bot', `<span style="color:var(--red)">[error] ${escapeHtml(e.message)}</span>`);
+  }
+
+  isQuerying = false;
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('typingIndicator').classList.remove('visible');
+  input.focus();
 }
 
-async function clearHistory() {
-    await fetch('/api/clear_history', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({session_id: sessionId})
+function formatAnswer(text) {
+  // Basic formatting: escape HTML, convert newlines, bold **text**
+  let h = escapeHtml(text);
+  h = h.replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--text-bright)">$1</strong>');
+  h = h.replace(/`(.*?)`/g, '<code style="color:var(--amber);background:var(--bg);padding:1px 4px;border-radius:2px">$1</code>');
+  h = h.replace(/\n/g, '<br>');
+  return h;
+}
+
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+// ============ JOBS ============
+async function uploadResume() {
+  const text = document.getElementById('resumeText').value.trim();
+  if (!text) return showToast('Paste resume text first', 'error');
+  try {
+    const r = await fetch('/api/jobs/upload-resume', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text})
     });
-    document.getElementById('chatMessages').innerHTML =
-        '<div class="empty" id="chatEmpty"><h3>Ask anything about your documents</h3><p>Your AI assistant searches local docs and the web to answer questions.</p></div>';
+    const d = await r.json();
+    if (d.status === 'ok') showToast('Resume uploaded (' + d.length + ' chars)', 'success');
+    else showToast(d.error || 'Upload failed', 'error');
+  } catch(e) { showToast('Upload error: ' + e.message, 'error'); }
 }
 
-// ===== JOBS =====
-function uploadResume() {
-    const text = document.getElementById('resumeText').value.trim();
-    if (!text) { document.getElementById('resumeStatus').textContent = 'Paste resume text first'; return; }
-    fetch('/api/jobs/upload-resume', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({text: text})
-    }).then(r => r.json()).then(d => {
-        if (d.status === 'ok') {
-            resumeLoaded = true;
-            document.getElementById('resumeStatus').textContent = 'Loaded (' + d.length.toLocaleString() + ' chars)';
-            document.getElementById('resumeStatus').style.color = 'var(--green)';
-        }
+async function searchJobs() {
+  const title = document.getElementById('jobTitle').value.trim();
+  const location = document.getElementById('jobLocation').value.trim();
+  const num = parseInt(document.getElementById('jobCount').value) || 10;
+  if (!title) return showToast('Enter a job title', 'error');
+
+  document.getElementById('jobSearchBtn').disabled = true;
+  document.getElementById('jobProgress').style.display = 'block';
+  document.getElementById('jobResults').innerHTML = '';
+  document.getElementById('jobPdfBtn').style.display = 'none';
+
+  try {
+    const response = await fetch('/api/jobs/search/stream', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title, location, num_results: num})
     });
-}
 
-function startJobSearch() {
-    const title = document.getElementById('jobTitle').value.trim();
-    const loc = document.getElementById('jobLocation').value.trim();
-    if (!title) { document.getElementById('jobHint').textContent = 'Enter a job title'; return; }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-    const rt = document.getElementById('resumeText').value.trim();
-    if (rt && !resumeLoaded) uploadResume();
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
 
-    document.getElementById('jobSearchBtn').disabled = true;
-    document.getElementById('jobHint').textContent = '';
-    document.getElementById('jobProgress').className = 'progress-box active';
-    document.getElementById('jobProgressBar').style.width = '0%';
-    document.getElementById('jobResults').innerHTML = '';
-    document.getElementById('jobResultsHeader').style.display = 'none';
-
-    fetch('/api/jobs/search/stream', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({title: title, location: loc, num_results: 10})
-    }).then(resp => {
-        if (!resp.ok) return resp.json().then(d => { throw new Error(d.error || 'Failed'); });
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = '';
-        function read() {
-            reader.read().then(({done, value}) => {
-                if (done) { document.getElementById('jobSearchBtn').disabled = false; return; }
-                buf += decoder.decode(value, {stream: true});
-                const lines = buf.split('\n'); buf = lines.pop();
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    const raw = line.slice(6).trim();
-                    if (!raw) continue;
-                    try { handleJobMsg(JSON.parse(raw)); } catch(e) {}
-                }
-                read();
-            });
-        }
-        read();
-    }).catch(e => {
-        document.getElementById('jobProgressText').textContent = 'Error: ' + e.message;
-        document.getElementById('jobSearchBtn').disabled = false;
-    });
-}
-
-function handleJobMsg(msg) {
-    const pt = document.getElementById('jobProgressText');
-    const pb = document.getElementById('jobProgressBar');
-    if (msg.type === 'status') pt.textContent = msg.message;
-    else if (msg.type === 'progress') { pt.textContent = 'Scraping ' + msg.current + '/' + msg.total; pb.style.width = (msg.current/msg.total*40) + '%'; }
-    else if (msg.type === 'job') pb.style.width = (40 + (msg.index+1)/10*50) + '%';
-    else if (msg.type === 'done') {
-        pb.style.width = '100%';
-        setTimeout(() => {
-            document.getElementById('jobProgress').className = 'progress-box';
-            showJobResults(msg.jobs);
-        }, 400);
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === 'status') {
+            document.getElementById('jobProgressText').textContent = parsed.message;
+          } else if (parsed.type === 'progress') {
+            const pct = (parsed.current / parsed.total * 100).toFixed(0);
+            document.getElementById('jobProgressFill').style.width = pct + '%';
+          } else if (parsed.type === 'job') {
+            appendJobCard(parsed.job);
+          } else if (parsed.type === 'done') {
+            document.getElementById('jobResults').innerHTML = '';
+            for (const j of parsed.jobs) appendJobCard(j);
+            document.getElementById('jobPdfBtn').style.display = 'block';
+          } else if (parsed.type === 'error') {
+            showToast(parsed.message, 'error');
+          }
+        } catch(e) {}
+      }
     }
-    else if (msg.type === 'error') { pt.textContent = msg.message; document.getElementById('jobSearchBtn').disabled = false; }
+  } catch(e) {
+    showToast('Search error: ' + e.message, 'error');
+  }
+
+  document.getElementById('jobSearchBtn').disabled = false;
+  document.getElementById('jobProgress').style.display = 'none';
 }
 
-function showJobResults(jobs) {
-    document.getElementById('jobResultsHeader').style.display = 'block';
-    document.getElementById('jobResultsTitle').textContent = jobs.length + ' jobs found (sorted by match)';
-    const el = document.getElementById('jobResults');
-    el.innerHTML = '';
-    for (const j of jobs) {
-        const s = Math.round(j.match_score);
-        const sc = s >= 75 ? 'score-hi' : s >= 50 ? 'score-md' : 'score-lo';
-        const meta = [];
-        if (j.company && j.company !== 'Unknown Company') meta.push('<span>' + esc(j.company) + '</span>');
-        if (j.location) meta.push('<span>' + esc(j.location) + '</span>');
-        if (j.salary) meta.push('<span>' + esc(j.salary) + '</span>');
-        const card = document.createElement('div');
-        card.className = 'job-card';
-        card.innerHTML = '<div class="job-score ' + sc + '">' + s + '</div><div class="job-detail">' +
-            '<h3>' + esc(j.title) + '</h3>' +
-            (meta.length ? '<div class="meta">' + meta.join('') + '</div>' : '') +
-            (j.match_reason ? '<div class="reason">' + esc(j.match_reason) + '</div>' : '') +
-            (j.url ? '<a href="' + esc(j.url) + '" target="_blank">View listing</a>' : '') +
-            '</div>';
-        el.appendChild(card);
-    }
-    document.getElementById('jobSearchBtn').disabled = false;
+function appendJobCard(job) {
+  const scoreClass = job.match_score >= 70 ? 'score-high' : job.match_score >= 40 ? 'score-mid' : 'score-low';
+  const html = `
+    <div class="job-card">
+      <div class="job-title">${escapeHtml(job.title || 'Untitled')}</div>
+      <div class="job-company">${escapeHtml(job.company || 'Unknown')}</div>
+      <div class="job-location">${escapeHtml(job.location || '')}</div>
+      ${job.salary ? `<div class="job-salary">${escapeHtml(job.salary)}</div>` : ''}
+      <div class="job-score"><span class="${scoreClass}">Match: ${job.match_score}/100</span></div>
+      ${job.match_reason ? `<div class="job-reason">${escapeHtml(job.match_reason)}</div>` : ''}
+      ${job.url ? `<a class="job-link" href="${job.url}" target="_blank">${job.url}</a>` : ''}
+    </div>
+  `;
+  document.getElementById('jobResults').insertAdjacentHTML('beforeend', html);
 }
 
-// ===== DOCUMENTS =====
+async function downloadJobPdf() {
+  try {
+    const r = await fetch('/api/jobs/pdf');
+    if (!r.ok) throw new Error('No results yet');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'job_results.pdf'; a.click();
+    URL.revokeObjectURL(url);
+    showToast('PDF downloaded', 'success');
+  } catch(e) { showToast('PDF error: ' + e.message, 'error'); }
+}
+
+// ============ DOCS ============
 async function loadDocs() {
-    try {
-        const r = await fetch('/api/docs/list');
-        const d = await r.json();
-        const el = document.getElementById('docsList');
-        const stats = document.getElementById('docsStats');
-        stats.textContent = d.files.length + ' files · ' + fmtSize(d.total_size);
-        if (d.files.length === 0) {
-            el.innerHTML = '<div class="empty"><p>No documents found. Add files to data/docs/ and click Re-index.</p></div>';
-            return;
-        }
-        el.innerHTML = d.files.map(f =>
-            '<div class="doc-row"><span class="doc-ext">' + esc(f.extension) + '</span><span class="doc-name">' + esc(f.name) + '</span><span class="doc-size">' + fmtSize(f.size) + '</span></div>'
-        ).join('');
-    } catch(e) {}
+  try {
+    const r = await fetch('/api/docs/list');
+    const d = await r.json();
+    const info = document.getElementById('docsInfo');
+    info.textContent = `${d.files.length} files, ${formatBytes(d.total_size)} total`;
+
+    const list = document.getElementById('docsList');
+    if (d.files.length === 0) {
+      list.innerHTML = '<div style="color:var(--text-dim);font-size:12px;">No documents found. Add files to data/docs/</div>';
+      return;
+    }
+    list.innerHTML = d.files.map(f => `
+      <div class="file-item">
+        <span><span class="file-ext">${f.extension}</span> <span class="file-name">${escapeHtml(f.name)}</span></span>
+        <span class="file-size">${formatBytes(f.size)}</span>
+      </div>
+    `).join('');
+  } catch(e) {}
 }
 
-async function reIngest() {
-    const btn = event.target;
-    btn.disabled = true; btn.textContent = 'Indexing...';
-    try {
-        const r = await fetch('/api/ingest', {method: 'POST'});
-        const d = await r.json();
-        if (d.status === 'ok') {
-            btn.textContent = 'Done! (' + d.vectors + ' vectors)';
-            document.getElementById('topIndex').textContent = 'Index: ' + d.vectors + ' vectors';
-            setTimeout(() => { btn.textContent = 'Re-index'; btn.disabled = false; }, 2000);
-        } else {
-            btn.textContent = d.message || 'Error'; btn.disabled = false;
-        }
-    } catch(e) { btn.textContent = 'Error'; btn.disabled = false; }
+async function reindex() {
+  const log = document.getElementById('reindexLog');
+  log.style.display = 'block';
+  log.innerHTML = logLine('info', 'Starting ingestion pipeline...');
+
+  try {
+    const r = await fetch('/api/ingest', {method: 'POST'});
+    const d = await r.json();
+    if (d.status === 'ok') {
+      log.innerHTML += logLine('ok', `Ingestion complete. ${d.vectors} vectors in index.`);
+      loadStatus();
+      loadDocs();
+      showToast('Re-indexed successfully', 'success');
+    } else {
+      log.innerHTML += logLine('err', d.message || 'Ingestion failed');
+    }
+  } catch(e) {
+    log.innerHTML += logLine('err', 'Error: ' + e.message);
+  }
 }
 
-// ===== MODELS =====
+// ============ MODELS ============
 async function loadModels() {
-    try {
-        const [modelsResp, statusResp] = await Promise.all([fetch('/api/models'), fetch('/api/system')]);
-        const models = await modelsResp.json();
-        const sys = await statusResp.json();
-        currentModel = sys.current_model;
-        const el = document.getElementById('modelsList');
-        el.innerHTML = models.map(m => {
-            const isActive = m.filename === currentModel;
-            const isDl = m.downloaded;
-            let badge = '', cls = '';
-            if (isActive) { badge = '<span class="model-badge badge-active">Active</span>'; cls = ' active-model'; }
-            else if (isDl) { badge = '<span class="model-badge badge-downloaded">Downloaded</span><button class="btn btn-primary btn-sm" onclick="switchModel(\'' + m.filename + '\')">Switch</button>'; }
-            else { badge = '<span class="model-badge badge-missing">Not downloaded</span>'; }
-            return '<div class="model-card' + cls + '"><div class="model-info"><h3>' + esc(m.name) + '</h3>' +
-                '<div class="specs"><span>Size: ' + m.size + '</span><span>RAM: ' + m.ram + '</span><span>' + m.filename + '</span></div></div>' +
-                '<div class="model-status">' + badge + '</div></div>';
-        }).join('');
-    } catch(e) {}
+  try {
+    const r = await fetch('/api/models');
+    const models = await r.json();
+    const grid = document.getElementById('modelsList');
+    grid.innerHTML = models.map(m => `
+      <div class="card">
+        <div class="card-title">${escapeHtml(m.name)}</div>
+        <div class="card-meta">file: <span class="val">${m.filename}</span></div>
+        <div class="card-meta">download: <span class="val">${m.size}</span></div>
+        <div class="card-meta">RAM: <span class="val">${m.ram}</span></div>
+        <div class="card-meta">status: <span class="val" style="color:${m.downloaded ? 'var(--green)' : 'var(--red)'}">${m.downloaded ? 'downloaded' : 'not downloaded'}</span></div>
+        ${m.downloaded ? `<div class="btn-row"><button class="action-btn" onclick="switchModel('${m.filename}')">Activate</button></div>` : ''}
+      </div>
+    `).join('');
+  } catch(e) {}
 }
 
 async function switchModel(filename) {
-    try {
-        const r = await fetch('/api/models/switch', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({filename: filename})
-        });
-        const d = await r.json();
-        if (d.status === 'ok') {
-            const msg = document.getElementById('modelSwitchMsg');
-            msg.style.display = 'block';
-            msg.textContent = d.message;
-            loadModels();
-        }
-    } catch(e) {}
-}
-
-// ===== SETTINGS =====
-async function loadMemory() {
-    try {
-        const r = await fetch('/api/memory');
-        const d = await r.json();
-        if (d.location) document.getElementById('setLocation').value = d.location;
-        if (d.units) document.getElementById('setUnits').value = d.units;
-        // Instructions
-        const il = document.getElementById('instructionsList');
-        const instructions = d.instructions || [];
-        il.innerHTML = instructions.map(i =>
-            '<div class="instruction-item"><span>' + esc(i) + '</span><button onclick="removeInstruction(\'' + esc(i).replace(/'/g, "\\'") + '\')">&times;</button></div>'
-        ).join('');
-        // Facts
-        const fl = document.getElementById('factsList');
-        const facts = d.facts || {};
-        const keys = Object.keys(facts);
-        if (keys.length === 0) {
-            fl.innerHTML = '<div style="font-size:12px;color:var(--text3)">No facts learned yet.</div>';
-        } else {
-            fl.innerHTML = keys.map(k =>
-                '<div class="instruction-item"><span><strong>' + esc(k) + ':</strong> ' + esc(facts[k]) + '</span><button onclick="forgetFact(\'' + esc(k).replace(/'/g, "\\'") + '\')">&times;</button></div>'
-            ).join('');
-        }
-    } catch(e) {}
-}
-
-function saveSetting(key, value) {
-    fetch('/api/memory', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'set', key: key, value: value})
-    }).then(() => loadMemory());
-}
-
-function addInstruction() {
-    const el = document.getElementById('newInstruction');
-    const text = el.value.trim();
-    if (!text) return;
-    el.value = '';
-    fetch('/api/memory', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'remember', instruction: text})
-    }).then(() => loadMemory());
-}
-
-function removeInstruction(text) {
-    fetch('/api/memory', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'forget', instruction: text})
-    }).then(() => loadMemory());
-}
-
-function forgetFact(key) {
-    fetch('/api/memory', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'forget', instruction: key})
-    }).then(() => loadMemory());
-}
-
-function clearMemory() {
-    if (!confirm('Clear all memory and preferences?')) return;
-    fetch('/api/memory', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'clear'})
-    }).then(() => loadMemory());
-}
-
-// ===== DEVELOPER =====
-async function loadSystemInfo() {
-    try {
-        const r = await fetch('/api/system');
-        const d = await r.json();
-        const el = document.getElementById('sysInfo');
-        const items = [
-            ['Platform', d.platform],
-            ['Python', d.python],
-            ['Threads', d.threads],
-            ['Active Model', d.current_model],
-            ['Context Window', d.context_window.toLocaleString() + ' tokens'],
-            ['Max Output', d.max_tokens + ' tokens'],
-            ['Temperature', d.temperature],
-            ['Embedding', d.embedding_model.split('/').pop()],
-            ['Embedding Dim', d.embedding_dim],
-            ['Index Size', d.index_size + ' vectors'],
-            ['Web Search', d.web_search ? 'Enabled' : 'Disabled'],
-            ['Faithfulness', (d.faithfulness_threshold * 100) + '%'],
-        ];
-        el.innerHTML = items.map(([label, value]) =>
-            '<div class="dev-stat"><div class="label">' + label + '</div><div class="value small">' + esc(String(value)) + '</div></div>'
-        ).join('');
-    } catch(e) {}
-}
-
-async function runBenchmark() {
-    const btn = document.getElementById('benchBtn');
-    const res = document.getElementById('benchResult');
-    btn.disabled = true; btn.textContent = 'Running...';
-    res.className = 'bench-result';
-    try {
-        const r = await fetch('/api/benchmark');
-        const d = await r.json();
-        res.className = 'bench-result active';
-        res.innerHTML = '<div style="margin-bottom:8px"><strong>Model:</strong> ' + esc(d.model) + '</div>' +
-            '<div style="margin-bottom:8px"><strong>Answer:</strong> ' + esc(d.answer) + '</div>' +
-            '<div><strong>Tokens:</strong> ' + d.tokens + ' · <strong>Speed:</strong> ' + d.tps + ' tok/s · <strong>Time:</strong> ' + d.elapsed + 's</div>';
-    } catch(e) {
-        res.className = 'bench-result active';
-        res.textContent = 'Error: ' + e.message;
+  try {
+    const r = await fetch('/api/models/switch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filename})
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      showToast(d.message, 'success');
+      loadSystemInfo();
+    } else {
+      showToast(d.error || 'Switch failed', 'error');
     }
-    btn.disabled = false; btn.textContent = 'Run Benchmark';
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
-// ===== BOOT =====
-init();
+// ============ MEMORY / SETTINGS ============
+async function loadMemory() {
+  try {
+    const r = await fetch('/api/memory');
+    const d = await r.json();
+    const el = document.getElementById('memoryDisplay');
+    let html = '';
+
+    if (d.location) html += `<div style="margin-bottom:4px;"><span style="color:var(--cyan);">location:</span> ${escapeHtml(d.location)}</div>`;
+    html += `<div style="margin-bottom:4px;"><span style="color:var(--cyan);">units:</span> ${d.units || 'imperial'}</div>`;
+
+    const facts = d.learned_facts || {};
+    const fKeys = Object.keys(facts);
+    if (fKeys.length > 0) {
+      html += '<div style="margin-top:8px;color:var(--amber);">learned facts:</div>';
+      for (const k of fKeys) {
+        html += `<div style="padding-left:12px;">${escapeHtml(k)}: ${escapeHtml(facts[k])}</div>`;
+      }
+    }
+
+    const instr = d.custom_instructions || [];
+    if (instr.length > 0) {
+      html += '<div style="margin-top:8px;color:var(--amber);">instructions:</div>';
+      for (const i of instr) {
+        html += `<div style="padding-left:12px;">${escapeHtml(i)}</div>`;
+      }
+    }
+
+    if (!html) html = '<span style="color:var(--text-dim);">No preferences stored. Use the inputs above to add some.</span>';
+    el.innerHTML = html;
+  } catch(e) {}
+}
+
+async function setMemory() {
+  const key = document.getElementById('memKey').value.trim();
+  const value = document.getElementById('memVal').value.trim();
+  if (!key || !value) return;
+  try {
+    await fetch('/api/memory', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'set', key, value})
+    });
+    document.getElementById('memKey').value = '';
+    document.getElementById('memVal').value = '';
+    loadMemory();
+    showToast('Memory updated', 'success');
+  } catch(e) { showToast('Error', 'error'); }
+}
+
+async function addInstruction() {
+  const text = document.getElementById('memInstruction').value.trim();
+  if (!text) return;
+  try {
+    await fetch('/api/memory', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'remember', instruction: text})
+    });
+    document.getElementById('memInstruction').value = '';
+    loadMemory();
+    showToast('Instruction saved', 'success');
+  } catch(e) { showToast('Error', 'error'); }
+}
+
+async function clearMemory() {
+  if (!confirm('Clear all user memory?')) return;
+  try {
+    await fetch('/api/memory', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'clear'})
+    });
+    loadMemory();
+    showToast('Memory cleared', 'success');
+  } catch(e) {}
+}
+
+async function clearHistory() {
+  try {
+    await fetch('/api/clear_history', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: sessionId})
+    });
+    showToast('Chat history cleared', 'success');
+  } catch(e) {}
+}
+
+// ============ BENCHMARK ============
+async function runBenchmark() {
+  const btn = document.getElementById('benchBtn');
+  const res = document.getElementById('benchResult');
+  btn.disabled = true;
+  res.innerHTML = '<span style="color:var(--text-dim)">Running benchmark<span class="blink">_</span></span>';
+
+  try {
+    const r = await fetch('/api/benchmark');
+    const d = await r.json();
+    res.innerHTML = `
+      <div class="kv-grid">
+        <span class="kv-key">model</span><span class="kv-val green">${d.model}</span>
+        <span class="kv-key">answer</span><span class="kv-val">${escapeHtml(d.answer)}</span>
+        <span class="kv-key">tokens</span><span class="kv-val cyan">${d.tokens}</span>
+        <span class="kv-key">speed</span><span class="kv-val green">${d.tps.toFixed(1)} tok/s</span>
+        <span class="kv-key">elapsed</span><span class="kv-val">${d.elapsed}s</span>
+      </div>
+    `;
+  } catch(e) {
+    res.innerHTML = `<span style="color:var(--red)">[error] ${escapeHtml(e.message)}</span>`;
+  }
+  btn.disabled = false;
+}
+
+// ============ UTILS ============
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function logLine(level, text) {
+  const now = new Date().toLocaleTimeString();
+  return `<div class="log-line log-${level}"><span class="log-time">[${now}]</span>${escapeHtml(text)}</div>`;
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
 </script>
 </body>
 </html>

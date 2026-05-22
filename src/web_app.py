@@ -6,6 +6,7 @@ FastAPI backend serving a chat interface. Run with:
 Then open http://localhost:8080 in your browser.
 """
 
+import os
 import sys
 import time
 import json
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
 from config import (
@@ -21,11 +23,54 @@ from config import (
     FAITHFULNESS_THRESHOLD, WEB_SEARCH_ENABLED,
     AVAILABLE_MODELS, MODELS_DIR, GGUF_MODEL_PATH,
     CONTEXT_WINDOW, N_THREADS, MAX_NEW_TOKENS, TEMPERATURE, TOP_P,
+    save_selected_model,
 )
 from rag_agent import RAGAgent
 
 app = FastAPI(title="Local RAG Agent")
 agent = None
+
+# Loopback addresses allowed to reach the API.
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+# Optional shared secret for write endpoints. If set in the environment,
+# clients must send it via the X-API-Token header on mutating requests.
+_API_TOKEN = os.environ.get("RAG_API_TOKEN", "").strip()
+
+# Methods that mutate state and therefore require the API token (when one is set).
+_WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+# Endpoints that must remain reachable from the local UI without a token even
+# when RAG_API_TOKEN is set (read-only or session bootstrapping).
+_TOKEN_EXEMPT_PATHS = {"/", "/jobs", "/api/session"}
+
+
+class LocalhostOnlyMiddleware(BaseHTTPMiddleware):
+    """Reject any request whose peer is not on a loopback address."""
+
+    async def dispatch(self, request: Request, call_next):
+        client = request.client
+        host = client.host if client else None
+        if host not in _LOOPBACK_HOSTS:
+            return JSONResponse({"error": "Forbidden"}, status_code=403)
+        return await call_next(request)
+
+
+class WriteTokenMiddleware(BaseHTTPMiddleware):
+    """Require X-API-Token on write endpoints when a token is configured."""
+
+    async def dispatch(self, request: Request, call_next):
+        if not _API_TOKEN:
+            return await call_next(request)
+        if request.method in _WRITE_METHODS and request.url.path not in _TOKEN_EXEMPT_PATHS:
+            supplied = request.headers.get("X-API-Token", "")
+            if supplied != _API_TOKEN:
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
+app.add_middleware(WriteTokenMiddleware)
+app.add_middleware(LocalhostOnlyMiddleware)
 
 # Per-session conversation histories
 sessions = {}
@@ -229,7 +274,7 @@ def get_job_agent():
     if job_agent_instance is None:
         from job_agent import JobAgent
         a = get_agent()
-        gen = a.gen if hasattr(a, 'gen') else None
+        gen = a.generator if hasattr(a, 'generator') else None
         job_agent_instance = JobAgent(generator=gen)
     return job_agent_instance
 
@@ -346,16 +391,32 @@ def api_job_pdf():
     output_path = Path(__file__).parent.parent / "job_results.pdf"
     generate_job_report(ja.get_top_jobs(5), output_path=output_path)
 
-    pdf_byt
+    pdf_bytes = output_path.read_bytes()
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=job_results.pdf"},
+    )
+
+
 # -- Document Management Endpoints --
 @app.get("/api/docs/list")
 def api_docs_list():
     docs_dir = DOCS_DIR
     if not docs_dir.exists():
         return JSONResponse({"files": [], "total_size": 0})
+    docs_root = docs_dir.resolve()
     files = []
     total_size = 0
     for f in sorted(docs_dir.rglob("*")):
+        if f.is_symlink():
+            continue
+        try:
+            if not f.resolve().is_relative_to(docs_root):
+                continue
+        except OSError:
+            continue
         if f.is_file():
             size = f.stat().st_size
             total_size += size
@@ -379,17 +440,10 @@ async def api_model_switch(request: Request):
     if not model_path.exists():
         return JSONResponse({"error": "Model not downloaded"}, status_code=400)
 
-    # Update config.py
-    config_path = Path(__file__).parent / "config.py"
-    config_text = config_path.read_text(encoding="utf-8")
-
-    import re as _re
-    new_text = _re.sub(
-        r'GGUF_MODEL_PATH = MODELS_DIR / ".*?"',
-        f'GGUF_MODEL_PATH = MODELS_DIR / "{filename}"',
-        config_text,
-    )
-    config_path.write_text(new_text, encoding="utf-8")
+    try:
+        save_selected_model(filename)
+    except (OSError, ValueError):
+        return JSONResponse({"error": "Could not persist model selection"}, status_code=500)
 
     return JSONResponse({
         "status": "ok",
@@ -433,9 +487,9 @@ async def api_benchmark(request: Request):
     test_ctx = "Basic math: 2+2=4, 3+3=6, 4+4=8."
     import time as _time
     t0 = _time.time()
-    answer = a.gen.generate(test_q, test_ctx, temperature_override=0.1)
+    answer = a.generator.generate(test_q, test_ctx, temperature_override=0.1)
     elapsed = _time.time() - t0
-    stats = a.gen.get_last_stats()
+    stats = a.generator.get_last_stats()
     return JSONResponse({
         "answer": answer,
         "tokens": stats["tokens"],

@@ -4,8 +4,14 @@ models/*.gguf
 # Local Data
 vectorstore/
 user_memory.json
+data/model_state.json
+job_results.pdf
+logs/*.log
 __pycache__/
 *.pyc
+
+# Local agent config (not for distribution)
+.claude/
 
 # Environment
 .env

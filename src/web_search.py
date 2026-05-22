@@ -12,6 +12,7 @@ import time
 import re
 
 from ingest import Chunk
+from url_safety import is_safe_url
 
 try:
     from ddgs import DDGS
@@ -39,11 +40,14 @@ def _scrape_page(url, timeout=5, max_chars=1500):
     if not HAS_SCRAPER:
         return None
 
+    if not is_safe_url(url):
+        return None
+
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=False)
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")

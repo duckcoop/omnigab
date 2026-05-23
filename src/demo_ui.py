@@ -47,8 +47,8 @@ def print_header():
     console.print()
     console.print(
         Panel(
-            "[bold white]🛡️  Local RAG Agent[/bold white]\n"
-            "[dim]Retrieval-Augmented Generation with Hallucination Mitigation[/dim]",
+            "[bold white]🛡️  OmniAgent[/bold white]\n"
+            "[dim]Local AI agent with tool-calling, RAG, and verification[/dim]",
             border_style="bright_cyan",
             padding=(1, 4),
         )

@@ -1,5 +1,5 @@
 """
-OmniAgent - Legacy CLI pipeline (verification layer)
+omnigab - Legacy CLI pipeline (verification layer)
 =====================================================
 Kept for the `python src/rag_agent.py ingest` command and the terminal
 demo UI. The new architecture lives in `src/core/` and `src/web_app.py`.
@@ -70,7 +70,7 @@ class RAGAgent:
 
     def __init__(self, load_gen: bool = True):
         print("\n" + "=" * 60)
-        print("  OmniAgent - Local Document Assistant (legacy CLI)")
+        print("  omnigab - Local Document Assistant (legacy CLI)")
         print("=" * 60 + "\n")
 
         self.embedder = EmbeddingEngine()
@@ -105,7 +105,7 @@ class RAGAgent:
         mem_status = "loaded" if self.memory.get("location") else "empty (use /set to configure)"
         print(f"User memory: {mem_status}")
         print(f"Skills: {len(self.skill_registry.enabled_skills())} enabled")
-        print("\nOmniAgent (legacy CLI) initialized.\n")
+        print("\nomnigab (legacy CLI) initialized.\n")
 
     def ingest(self, docs_dir: Path = DOCS_DIR):
         """Process all documents in docs_dir and build the vector index."""

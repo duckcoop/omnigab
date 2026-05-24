@@ -30,10 +30,13 @@ from config import (
 MODEL_PROFILE: dict[str, dict] = {
     "qwen2.5-1.5b-instruct-q4_k_m.gguf": {"weight_gb": 1.1, "ctx": 8192,  "batch": 512},
     "qwen2.5-3b-instruct-q4_k_m.gguf":   {"weight_gb": 2.1, "ctx": 8192,  "batch": 512},
-    "qwen2.5-7b-instruct-q4_k_m.gguf":   {"weight_gb": 4.4, "ctx": 8192,  "batch": 512},
-    "Qwen2.5-14B-Instruct-Q4_K_M.gguf":  {"weight_gb": 8.9, "ctx": 8192,  "batch": 512},
+    "qwen2.5-7b-instruct-q4_k_m.gguf":   {"weight_gb": 4.4, "ctx": 8192,  "batch": 1024},
+    # 14B at 8192 ctx with q8_0 KV cache (~1.5 GB) and 9 GB weights sits at
+    # ~10.5 GB on a 12 GB card — comfortable headroom, lets us push batch
+    # to 1024 for faster prompt processing.
+    "Qwen2.5-14B-Instruct-Q4_K_M.gguf":  {"weight_gb": 8.9, "ctx": 8192,  "batch": 1024},
 }
-_DEFAULT_PROFILE = {"weight_gb": 9.0, "ctx": 4096, "batch": 256}
+_DEFAULT_PROFILE = {"weight_gb": 9.0, "ctx": 4096, "batch": 512}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -175,19 +178,19 @@ def ensure_model_downloaded(filename: str, *, progress: bool = True) -> bool:
     try:
         from huggingface_hub import hf_hub_download
     except ImportError:
-        print("[OmniAgent] huggingface-hub not installed; cannot auto-download.")
+        print("[omnigab] huggingface-hub not installed; cannot auto-download.")
         return False
 
     repo = AVAILABLE_MODELS[filename]["repo"]
     if progress:
         size = AVAILABLE_MODELS[filename]["size"]
-        print(f"[OmniAgent] Downloading {filename} ({size}) from {repo}…")
+        print(f"[omnigab] Downloading {filename} ({size}) from {repo}…")
     try:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         hf_hub_download(repo_id=repo, filename=filename, local_dir=str(MODELS_DIR))
         return target.exists()
     except Exception as exc:
-        print(f"[OmniAgent] Download failed: {exc}")
+        print(f"[omnigab] Download failed: {exc}")
         return False
 
 

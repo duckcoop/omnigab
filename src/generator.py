@@ -53,17 +53,32 @@ class Generator:
         n_gpu_layers: int = 999,
         n_ctx: int = CONTEXT_WINDOW,
         n_threads: int = N_THREADS,
-        n_batch: int = 512,
+        n_batch: int = 1024,
     ):
         path = model_path or str(GGUF_MODEL_PATH)
         gpu_msg = "(GPU offload)" if n_gpu_layers != 0 else "(CPU only)"
         print(f"Loading GGUF model: {Path(path).name} {gpu_msg}")
-        print(f"Context: {n_ctx} | Batch: {n_batch} | Threads: {n_threads} | GPU layers: {n_gpu_layers}")
+        print(f"Context: {n_ctx} | Batch: {n_batch} | Threads: {n_threads} | "
+              f"GPU layers: {n_gpu_layers}")
 
-        self.llm = Llama(
+        # Performance tuning for 12 GB cards running the 14B model:
+        #   * flash_attn=True      — uses the fused-kernel attention; ~30%
+        #                            less VRAM for the KV cache and faster
+        #                            per-token decode. Requires CUDA wheel.
+        #   * type_k/type_v="q8_0" — quantize KV cache to 8-bit. Halves KV
+        #                            VRAM at imperceptible quality loss.
+        #                            Without this, the 14B + 8192 ctx FP16
+        #                            KV cache sits right at the 12 GB cliff
+        #                            and any other GPU consumer (browser,
+        #                            etc.) tips KV cache into system RAM,
+        #                            collapsing tok/s from ~35 to ~4.
+        #   * n_ubatch matches n_batch so prompt-processing throughput
+        #                            actually scales with the batch size.
+        llm_kwargs = dict(
             model_path=path,
             n_ctx=n_ctx,
             n_batch=n_batch,
+            n_ubatch=n_batch,
             n_threads=n_threads,
             n_threads_batch=n_threads,
             n_gpu_layers=n_gpu_layers,
@@ -71,10 +86,60 @@ class Generator:
             use_mlock=False,
             verbose=False,
         )
+        if n_gpu_layers != 0:
+            # type_k / type_v take the GGML enum INT (NOT the "q8_0" string).
+            # GGML_TYPE_Q8_0 = 8 bits per element with shared scale; halves
+            # KV cache VRAM vs FP16 at imperceptible quality loss.
+            try:
+                from llama_cpp import GGML_TYPE_Q8_0
+                kv_type = GGML_TYPE_Q8_0
+            except Exception:
+                kv_type = None
+            llm_kwargs["flash_attn"] = True
+            if kv_type is not None:
+                llm_kwargs["type_k"] = kv_type
+                llm_kwargs["type_v"] = kv_type
+
+        try:
+            self.llm = Llama(**llm_kwargs)
+        except TypeError as exc:
+            # Some llama-cpp-python wheels still differ. Drop the perf
+            # extras one-by-one rather than all at once so n_ubatch /
+            # batch tuning survives even if flash_attn doesn't.
+            print(f"[generator] init rejected: {exc}. Retrying without perf extras.")
+            for k in ("type_k", "type_v", "flash_attn"):
+                if k in llm_kwargs:
+                    llm_kwargs.pop(k)
+                    try:
+                        self.llm = Llama(**llm_kwargs)
+                        print(f"[generator] succeeded after dropping {k}")
+                        break
+                    except TypeError:
+                        continue
+            else:
+                # Final fallback — also drop n_ubatch if everything still fails.
+                llm_kwargs.pop("n_ubatch", None)
+                self.llm = Llama(**llm_kwargs)
+                print("[generator] succeeded with bare-minimum args")
 
         size_gb = Path(path).stat().st_size / 1e9
         print(f"Model loaded: {Path(path).name}")
         print(f"File size: {size_gb:.2f} GB | Vocab: {self.llm.n_vocab()}")
+
+        # Verify GPU offload actually engaged. If n_gpu_layers was non-zero
+        # but the wheel doesn't have CUDA, the import would have worked but
+        # inference falls back to CPU silently. Print the truth so a slow
+        # tok/s symptom has a visible cause.
+        try:
+            import llama_cpp as _lc
+            cuda_ok = bool(getattr(_lc, "llama_supports_gpu_offload",
+                                   lambda: False)())
+        except Exception:
+            cuda_ok = False
+        active_state = ("GPU OFFLOAD ACTIVE" if (n_gpu_layers != 0 and cuda_ok)
+                        else "CPU ONLY")
+        print(f"Inference backend: {active_state}  "
+              f"(llama-cpp CUDA support: {cuda_ok})")
 
         self.model_path = path
         self.n_gpu_layers = n_gpu_layers

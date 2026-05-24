@@ -1,4 +1,4 @@
-# Prompt for Claude Code: Add Skill Learning + Security to OmniAgent
+# Prompt for Claude Code: Add Skill Learning + Security to omnigab
 
 Paste everything below this line into Claude Code in VSCode.
 

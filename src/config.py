@@ -1,5 +1,5 @@
 """
-OmniAgent Configuration
+omnigab Configuration
 =======================
 Central config for all pipeline components. Edit these values to swap models,
 adjust chunk sizes, or tune retrieval parameters.
@@ -94,7 +94,13 @@ N_THREADS = 8       # match your physical core count (Ryzen 9850X3D = 8 cores)
 GENERATION_MODEL = "HuggingFaceTB/SmolLM2-360M-Instruct"
 USE_GGUF = True
 
-MAX_NEW_TOKENS = 512
+# Per-response generation ceiling. Job-search answers need room for the
+# <thinking> block (~250 tokens for 10 jobs) plus ~50 tokens per rendered
+# job. 10 jobs = ~750-900 tokens; 25 jobs = ~1500. 1536 leaves comfortable
+# headroom and still fits inside the 8192-token context alongside the
+# system prompt, tool result, and history. Short chats cost nothing — the
+# model emits EOT naturally regardless of this cap.
+MAX_NEW_TOKENS = 2048
 TEMPERATURE = 0.15
 TOP_P = 0.9
 

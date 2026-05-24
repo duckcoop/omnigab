@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OmniAgent deployment script: lint, then optionally commit + push.
+"""omnigab deployment script: lint, then optionally commit + push.
 
 Usage examples
 --------------
@@ -7,7 +7,7 @@ Usage examples
   python scripts/deploy.py --commit "msg" # lint, commit if clean
   python scripts/deploy.py --commit "msg" --push   # lint, commit, push
   python scripts/deploy.py --auto                  # lint + auto-commit + push
-  python scripts/deploy.py --rebrand               # one-shot for the OmniAgent rebrand commit
+  python scripts/deploy.py --rebrand               # one-shot for the omnigab rebrand commit
   python scripts/deploy.py --skip-lint --push      # push without linting (use sparingly)
 
 Lint is scoped to source folders (src/, scripts/, desktop_app.py) and
@@ -64,14 +64,14 @@ def lint() -> int:
     """Run flake8 over the scoped targets. Returns its exit code (0 = clean)."""
     flake = _resolve_flake8()
     if flake is None:
-        print("[omniagent-deploy] flake8 not installed. Install with:")
+        print("[omnigab-deploy] flake8 not installed. Install with:")
         print("         venv\\Scripts\\python.exe -m pip install flake8")
         return 1
 
     print(f"[deploy] Linting {', '.join(LINT_TARGETS)}...")
     result = _run(flake + LINT_TARGETS)
     if result.returncode == 0:
-        print("[omniagent-deploy] Lint passed.")
+        print("[omnigab-deploy] Lint passed.")
     else:
         print(f"[deploy] Lint failed (exit {result.returncode}).")
     return result.returncode
@@ -115,7 +115,7 @@ def main() -> int:
     parser.add_argument("--auto", action="store_true",
                         help="Lint, commit with an auto-generated message, push.")
     parser.add_argument("--rebrand", action="store_true",
-                        help="One-shot for the OmniAgent rebrand: lint, commit with the "
+                        help="One-shot for the omnigab rebrand: lint, commit with the "
                              "rebrand message, and push.")
     parser.add_argument("--force", action="store_true",
                         help="Commit + push even if lint fails.")
@@ -123,8 +123,8 @@ def main() -> int:
 
     if args.rebrand and not args.commit:
         args.commit = (
-            "rebrand: OmniAgent — universal local AI agent\n\n"
-            "* Project renamed from Local RAG Agent to OmniAgent.\n"
+            "rebrand: omnigab — universal local AI agent\n\n"
+            "* Project renamed from Local RAG Agent to omnigab.\n"
             "* Hardware autotuner picks model size based on detected RAM/VRAM.\n"
             "* Strict Python 3.12 enforcement in setup.bat for CUDA wheel compat.\n"
             "* Updated UI titles, console banners, batch files, and docs."
@@ -132,29 +132,29 @@ def main() -> int:
         args.push = True
 
     if args.auto and not args.commit:
-        args.commit = f"chore(omniagent): auto-commit on {current_branch()}"
+        args.commit = f"chore(omnigab): auto-commit on {current_branch()}"
         args.push = True
 
     # ----- lint -----
     if not args.skip_lint:
         code = lint()
         if code != 0 and not args.force:
-            print("[omniagent-deploy] Aborting: fix lint or pass --force.")
+            print("[omnigab-deploy] Aborting: fix lint or pass --force.")
             return code
 
     # ----- commit -----
     if args.commit:
         if not working_tree_dirty():
-            print("[omniagent-deploy] Working tree clean. Nothing to commit.")
+            print("[omnigab-deploy] Working tree clean. Nothing to commit.")
         else:
-            print("[omniagent-deploy] Staging changes...")
+            print("[omnigab-deploy] Staging changes...")
             if stage_all() != 0:
-                print("[omniagent-deploy] git add failed.")
+                print("[omnigab-deploy] git add failed.")
                 return 1
             print(f"[deploy] Committing: {args.commit}")
             rc = commit(args.commit)
             if rc != 0:
-                print("[omniagent-deploy] git commit failed (nothing to commit, or hook rejection).")
+                print("[omnigab-deploy] git commit failed (nothing to commit, or hook rejection).")
                 # An empty commit isn't a failure for our purposes if push was also requested.
                 if not args.push:
                     return rc
@@ -165,11 +165,11 @@ def main() -> int:
         print(f"[deploy] Pushing branch {branch} to origin...")
         rc = push()
         if rc != 0:
-            print("[omniagent-deploy] git push failed.")
+            print("[omnigab-deploy] git push failed.")
             return rc
-        print("[omniagent-deploy] Push complete.")
+        print("[omnigab-deploy] Push complete.")
 
-    print("[omniagent-deploy] Done.")
+    print("[omnigab-deploy] Done.")
     return 0
 
 

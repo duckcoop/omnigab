@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Downloads the default AI model for OmniAgent.
+    Downloads the default AI model for omnigab.
     Run this after installing dependencies if the model isn't in the models/ folder.
 
 .USAGE
@@ -12,7 +12,7 @@ $ModelsDir = Join-Path $PSScriptRoot "models"
 $GgufModel = Join-Path $ModelsDir "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 
 Write-Host ""
-Write-Host "OmniAgent - Model Downloader" -ForegroundColor Cyan
+Write-Host "omnigab - Model Downloader" -ForegroundColor Cyan
 Write-Host ""
 
 if (Test-Path $GgufModel) {

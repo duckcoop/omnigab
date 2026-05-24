@@ -1,5 +1,5 @@
 @echo off
-title OmniAgent
+title omnigab
 cd /d "%~dp0"
 
 if not exist "venv\Scripts\python.exe" (
@@ -9,7 +9,7 @@ if not exist "venv\Scripts\python.exe" (
 )
 
 echo.
-echo   Starting OmniAgent Desktop...
+echo   Starting omnigab Desktop...
 echo   (Close the window to shut down)
 echo.
 

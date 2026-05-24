@@ -1,11 +1,11 @@
-# push_omniagent.ps1 - finish the OmniAgent rebrand push from Windows
-# Run from PowerShell:   powershell -ExecutionPolicy Bypass -File .\push_omniagent.ps1
+# push_omnigab.ps1 - finish the omnigab rebrand push from Windows
+# Run from PowerShell:   powershell -ExecutionPolicy Bypass -File .\push_omnigab.ps1
 
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
 Write-Host ""
-Write-Host "=== OmniAgent push helper ===" -ForegroundColor Cyan
+Write-Host "=== omnigab push helper ===" -ForegroundColor Cyan
 Write-Host ""
 
 # 0. Clean any stale lockfile (only if no git process is running)
@@ -68,7 +68,7 @@ if ($confirm -ne "y" -and $confirm -ne "Y") {
 
 # 4. Build commit message as an array then join (avoids here-string parse issues)
 $msgLines = @(
-    "feat: rebrand to OmniAgent, agent loop, USAJOBS tool, cert matching, GPU autotuning",
+    "feat: rebrand to omnigab, agent loop, USAJOBS tool, cert matching, GPU autotuning",
     "",
     "* Replace RAG-only pipeline with tool-calling Agent (src/core/agent.py)",
     "* Add tool catalog: rag_search, web_search, usajobs_search, memory_read/write, persistent_memory, open_in_browser, plus user-skill adapters",
@@ -96,4 +96,4 @@ git push origin main
 if ($LASTEXITCODE -ne 0) { Write-Host "git push failed" -ForegroundColor Red; exit 1 }
 
 Write-Host ""
-Write-Host "Done. Check https://github.com/duckcoop/local-rag-agent" -ForegroundColor Green
+Write-Host "Done. Check https://github.com/duckcoop/omnigab" -ForegroundColor Green

@@ -1,5 +1,5 @@
 @echo off
-echo === OmniAgent: GitHub repository bootstrap ===
+echo === omnigab: GitHub repository bootstrap ===
 
 cd /d "%~dp0"
 
@@ -14,14 +14,14 @@ git config user.name "Cooper Preston"
 git config user.email "cooperpreston43@gmail.com"
 
 git add -A
-git commit -m "feat: initial OmniAgent commit"
+git commit -m "feat: initial omnigab commit"
 
 :: NOTE: update the URL below after you create / rename the GitHub repo.
-git remote add origin https://github.com/duckcoop/omniagent.git
+git remote add origin https://github.com/duckcoop/omnigab.git
 git push -u origin main
 
 echo.
 echo === Done! Repository pushed to GitHub ===
-echo https://github.com/duckcoop/omniagent
+echo https://github.com/duckcoop/omnigab
 echo.
 pause

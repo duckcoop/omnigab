@@ -238,7 +238,7 @@ def validate_url(url: str) -> str:
 
 # -------------------------------------------------------------- bearer token
 
-_TOKEN_KEY = "OMNIAGENT_API_TOKEN"
+_TOKEN_KEY = "OMNIGAB_API_TOKEN"
 _LEGACY_TOKEN_KEY = "RAG_API_TOKEN"   # old name; honoured on read, migrated on write
 
 
@@ -268,9 +268,9 @@ def get_or_create_api_token(env_path: Path = ENV_PATH) -> str:
     """Return the API bearer token, generating one on first run.
 
     Resolution order:
-      1. The OMNIAGENT_API_TOKEN environment variable.
+      1. The OMNIGAB_API_TOKEN environment variable.
       2. The legacy RAG_API_TOKEN environment variable (rebrand migration).
-      3. The OMNIAGENT_API_TOKEN entry in .env, then the legacy entry.
+      3. The OMNIGAB_API_TOKEN entry in .env, then the legacy entry.
       4. A freshly generated 32 byte hex token, written back under the
          new key so future runs reuse it.
     """

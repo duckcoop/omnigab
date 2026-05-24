@@ -1,11 +1,11 @@
 """
-OmniAgent Desktop Launcher
+omnigab Desktop Launcher
 ==========================
-Opens OmniAgent as a desktop-style window using Edge/Chrome app mode.
+Opens omnigab as a desktop-style window using Edge/Chrome app mode.
 No extra dependencies needed - uses the browser you already have but
 strips away tabs, address bar, and bookmarks so it looks like a native app.
 
-Just double-click OmniAgent.bat to run.
+Just double-click omnigab.bat to run.
 """
 
 import sys
@@ -91,7 +91,7 @@ def main():
     if not already_running:
         print()
         print("  ╔══════════════════════════════════════╗")
-        print("  ║        OmniAgent                     ║")
+        print("  ║        omnigab                     ║")
         print("  ║  Loading model & building index...   ║")
         print("  ║  This may take a minute on first run ║")
         print("  ╚══════════════════════════════════════╝")

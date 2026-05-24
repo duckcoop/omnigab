@@ -147,7 +147,7 @@ class UserMemory:
 if __name__ == "__main__":
     print("=== User Memory Test ===\n")
     mem = UserMemory()
-    mem.set("location", "Frederick, MD")
+    mem.set("location", "Austin, TX")
     mem.set("units", "imperial")
     mem.add_instruction("Don't use Celsius, I'm in the US")
     mem.add_instruction("Keep answers short unless I ask for detail")

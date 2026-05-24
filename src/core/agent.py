@@ -102,8 +102,8 @@ Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"IT Speciali
 User: find me Space Force cyber operations entry-level roles
 Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"Cybersecurity","entry_level":true,"max_jobs":10}}</tool_call>
 
-User: federal IT specialist jobs in Frederick MD
-Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"IT Specialist","location":"Frederick, MD","entry_level":true}}</tool_call>
+User: federal IT specialist jobs in Austin TX
+Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"IT Specialist","location":"Austin, TX","entry_level":true}}</tool_call>
 
 User: find AI jobs at usajobs
 Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"Artificial Intelligence","ai_focus":true,"max_jobs":10}}</tool_call>
@@ -111,14 +111,14 @@ Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"Artificial 
 User: look for experimental cutting edge ML positions
 Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"Machine Learning","ai_focus":true,"max_jobs":10}}</tool_call>
 
-User: just open indeed for help desk jobs in Frederick MD
-Assistant: <tool_call>{"name":"open_in_browser","arguments":{"site":"indeed","query":"help desk","location":"Frederick MD","days_ago":14}}</tool_call>
+User: just open indeed for help desk jobs in Austin TX
+Assistant: <tool_call>{"name":"open_in_browser","arguments":{"site":"indeed","query":"help desk","location":"Austin TX","days_ago":14}}</tool_call>
 
 User: what does my AD doc say about password resets?
 Assistant: <tool_call>{"name":"rag_search","arguments":{"query":"password reset Active Directory"}}</tool_call>
 
-User: remember that my preferred location is Frederick, MD
-Assistant: <tool_call>{"name":"memory_write","arguments":{"action":"set","key":"location","value":"Frederick, MD"}}</tool_call>
+User: remember that my preferred location is Austin, TX
+Assistant: <tool_call>{"name":"memory_write","arguments":{"action":"set","key":"location","value":"Austin, TX"}}</tool_call>
 
 User: what's 17 * 23?
 Assistant: 391.

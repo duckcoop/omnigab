@@ -31,7 +31,7 @@ def main() -> int:
     parser.add_argument("--query", default="IT Specialist",
                         help='Job keywords (default: "IT Specialist")')
     parser.add_argument("--location", default="",
-                        help='Location filter (e.g. "Frederick, MD")')
+                        help='Location filter (e.g. "Austin, TX")')
     parser.add_argument("--max", type=int, default=5, dest="max_jobs",
                         help="Max results (default 5)")
     parser.add_argument("--days", type=int, default=30,

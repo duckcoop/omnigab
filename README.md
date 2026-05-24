@@ -117,7 +117,7 @@ The chat is plain-English. Examples that route to specific tools:
 |---|---|---|
 | "find me 5 entry-level IT jobs in Maryland" | `indeed_apply` | Searches Indeed via Playwright, scrapes 5 listings, returns titles + URLs |
 | "what does my AD doc say about password resets?" | `rag_search` | Embeds query, finds top chunks in your `data/docs/` |
-| "remember that I live in Frederick, MD" | `memory_write` | Saved to `user_memory.json` + SQLite |
+| "remember that I live in Austin, TX" | `memory_write` | Saved to `user_memory.json` + SQLite |
 | "what's the latest news on the Space Force?" | `web_search` | DuckDuckGo, summarized with citations |
 | "what's 17 × 23?" | _(no tool)_ | Direct math answer |
 

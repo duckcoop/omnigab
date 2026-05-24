@@ -161,7 +161,7 @@ if __name__ == "__main__":
     if not engine.is_available():
         print("Install ddgs: pip install ddgs")
     else:
-        query = "weather in Frederick MD"
+        query = "weather in Austin TX"
         print(f"Query: {query}\n")
         results = engine.search(query)
         for chunk, score in results:

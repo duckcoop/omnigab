@@ -1,0 +1,11 @@
+{
+  "name": "extract_action_items",
+  "description": "Extract action items, owners, due dates, decisions, and blockers from retrieved document text.",
+  "triggers": ["action items", "todo", "to-do", "tasks", "next steps", "follow up", "owner", "due date"],
+  "system_prompt": "Extract concrete action items from the retrieved content. Preserve owners and due dates when present.",
+  "network_allowlist": [],
+  "requires_generator": true,
+  "requires_retrieval": true,
+  "version": "1.0.0",
+  "enabled": true
+}

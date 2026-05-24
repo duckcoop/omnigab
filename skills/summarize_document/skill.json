@@ -1,0 +1,11 @@
+{
+  "name": "summarize_document",
+  "description": "Summarize one retrieved document or a set of relevant document chunks into a concise, structured summary.",
+  "triggers": ["summari[sz]e", "summary", "tl;dr", "overview", "brief"],
+  "system_prompt": "Summarize the retrieved document content. Focus on purpose, important facts, procedures, constraints, and decisions. Do not add facts that are not present.",
+  "network_allowlist": [],
+  "requires_generator": true,
+  "requires_retrieval": true,
+  "version": "1.0.0",
+  "enabled": true
+}

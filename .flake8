@@ -1,0 +1,24 @@
+[flake8]
+max-line-length = 120
+extend-ignore =
+    E501,
+    W503,
+    W504,
+    E203,
+    E226,
+    E402,
+    E731,
+    F541
+exclude =
+    venv,
+    __pycache__,
+    .git,
+    build,
+    dist,
+    models,
+    vectorstore,
+    data,
+    logs,
+    .pytest_cache
+per-file-ignores =
+    __init__.py: F401

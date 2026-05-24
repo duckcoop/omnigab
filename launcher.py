@@ -1,11 +1,11 @@
 """
-RAG Agent Desktop Launcher
+OmniAgent Desktop Launcher
 ==========================
-Opens the RAG Agent as a desktop-style window using Edge/Chrome app mode.
+Opens OmniAgent as a desktop-style window using Edge/Chrome app mode.
 No extra dependencies needed - uses the browser you already have but
 strips away tabs, address bar, and bookmarks so it looks like a native app.
 
-Just double-click RAG_Agent.bat to run.
+Just double-click OmniAgent.bat to run.
 """
 
 import sys
@@ -91,7 +91,7 @@ def main():
     if not already_running:
         print()
         print("  ╔══════════════════════════════════════╗")
-        print("  ║        RAG Agent v2.0                ║")
+        print("  ║        OmniAgent                     ║")
         print("  ║  Loading model & building index...   ║")
         print("  ║  This may take a minute on first run ║")
         print("  ╚══════════════════════════════════════╝")

@@ -19,3 +19,12 @@ fpdf2>=2.7.0
 psutil>=5.9.0
 playwright>=1.40.0
 flake8>=7.0.0
+docx2txt>=0.8
+
+# CUDA runtime DLLs for the prebuilt llama-cpp-python CUDA wheel.
+# These are required on Windows when the system does not have the full
+# CUDA Toolkit installed. scripts/install_cuda_dlls.py copies them next
+# to llama.dll after pip install.
+nvidia-cuda-runtime-cu12; platform_system == "Windows"
+nvidia-cublas-cu12; platform_system == "Windows"
+nvidia-cuda-nvrtc-cu12; platform_system == "Windows"

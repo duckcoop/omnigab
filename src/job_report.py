@@ -171,7 +171,7 @@ if __name__ == "__main__":
     print("=== Job Report Test ===\n")
 
     sample_jobs = [
-        JobListing("Senior Python Developer", "Acme Corp", "Frederick, MD",
+        JobListing("Senior Python Developer", "Acme Corp", "Austin, TX",
                     "$120,000 - $150,000/year", "Build backend services...",
                     "https://indeed.com/example1", 92, "Strong Python match with backend experience."),
         JobListing("IT Support Specialist", "Tech Solutions Inc", "Remote",

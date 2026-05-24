@@ -361,7 +361,7 @@ if __name__ == "__main__":
     # Test search (no LLM scoring in standalone test)
     if HAS_DDG:
         print("\nSearching for 'software engineer' jobs...")
-        results = search_jobs("software engineer", "Frederick MD", 3)
+        results = search_jobs("software engineer", "Austin TX", 3)
         for r in results:
             print(f"  {r.get('title', 'N/A')}")
             print(f"  {r.get('href', 'N/A')}\n")

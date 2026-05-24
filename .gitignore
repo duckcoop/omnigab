@@ -39,3 +39,6 @@ Desktop.ini
 
 # HuggingFace cache
 .cache/
+
+# Runtime-only directories
+models/

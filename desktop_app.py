@@ -1,5 +1,5 @@
 """
-OmniAgent - Native Desktop Application
+omnigab - Native Desktop Application
 =======================================
 A real native Windows desktop app using tkinter.
 No browser, no HTML - pure native GUI with a terminal aesthetic.
@@ -29,12 +29,24 @@ BG3 = "#30302b"
 FG = "#d8d4c9"
 FG_DIM = "#8f8a80"
 FG_BRIGHT = "#f4f0e6"
-GREEN = "#d97757"
-AMBER = "#c6a15b"
+# --- Unified green palette (replaces the old orange brand color) ---
+# All accents, borders, button highlights, status pills, and active-tab
+# indicators read from these. The naming is preserved (GREEN/AMBER) so
+# existing code keeps working — only the hex values have shifted hue.
+GREEN = "#7ec890"          # primary accent  (was #d97757 orange)
+GREEN_DEEP = "#4ea36b"     # hover / active state for primary buttons
+GREEN_DIM = "#3a5a48"      # subtle borders and dividers tinted green
+AMBER = "#a8c879"          # secondary / warning (was orange-yellow)
 RED = "#e06c62"
-CYAN = "#9ab7a5"
+CYAN = "#9ab7a5"           # already greenish — kept
 BLUE = "#a9b7d0"
-BORDER = "#3a3833"
+BORDER = "#324035"         # slightly green-tinted border (was #3a3833)
+
+# User-message bubble — distinct dark-green block so the user's turn is
+# visually separated from the assistant's turn.
+USER_BUBBLE_BG = "#1c3a2e"
+USER_BUBBLE_BG_DARK = "#162d24"
+USER_BUBBLE_FG = "#e6f0e2"
 FONT = ("Segoe UI", 11)
 FONT_SM = ("Segoe UI", 10)
 FONT_XS = ("Segoe UI", 9)
@@ -65,7 +77,9 @@ def api_post(path, data=None):
             headers=headers,
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        # 240s budget: USAJOBS deep-fetch can take ~30s (parallel) + model
+        # generation on the 14B model adds another 30-60s of streaming.
+        with urllib.request.urlopen(req, timeout=240) as resp:
             return json.loads(resp.read().decode())
     except Exception as e:
         return {"error": str(e)}
@@ -83,7 +97,11 @@ def stream_post(path, data=None):
             headers=headers,
             method="POST"
         )
-        resp = urllib.request.urlopen(req, timeout=300)
+        # 10-minute ceiling. The actual budget that matters is the per-chunk
+        # read below: SSE keeps the socket alive as long as the server sends
+        # at least one byte before this elapses. The Agent emits tool_start /
+        # tool_end / token events frequently enough that 600s is generous.
+        resp = urllib.request.urlopen(req, timeout=600)
         buffer = ""
         while True:
             chunk = resp.read(256)
@@ -110,7 +128,7 @@ class RAGApp(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title("OmniAgent")
+        self.title("omnigab")
         self.geometry("1000x700")
         self.minsize(750, 500)
         self.configure(bg=BG)
@@ -182,7 +200,7 @@ class RAGApp(tk.Tk):
         bar.pack(fill="x", side="top")
         bar.pack_propagate(False)
 
-        ttk.Label(bar, text="OmniAgent", style="Logo.TLabel").pack(side="left", padx=(12, 4))
+        ttk.Label(bar, text="omnigab", style="Logo.TLabel").pack(side="left", padx=(12, 4))
 
         sep = ttk.Label(bar, text=" | ", style="Topbar.TLabel")
         sep.pack(side="left", padx=4)
@@ -265,9 +283,18 @@ class RAGApp(tk.Tk):
         self.chat_output.pack(fill="both", expand=True)
 
         # Configure text tags
-        self.chat_output.tag_configure("user_prefix", foreground=CYAN, font=("Consolas", 10, "bold"))
+        self.chat_output.tag_configure(
+            "user_prefix",
+            foreground=USER_BUBBLE_FG, background=USER_BUBBLE_BG_DARK,
+            font=("Consolas", 10, "bold"),
+            lmargin1=10, lmargin2=10, rmargin=10, spacing1=6,
+        )
         self.chat_output.tag_configure("bot_prefix", foreground=GREEN, font=("Consolas", 10, "bold"))
-        self.chat_output.tag_configure("user_text", foreground=FG_BRIGHT, font=FONT)
+        self.chat_output.tag_configure(
+            "user_text",
+            foreground=USER_BUBBLE_FG, background=USER_BUBBLE_BG, font=FONT,
+            lmargin1=10, lmargin2=10, rmargin=10, spacing3=6,
+        )
         self.chat_output.tag_configure("bot_text", foreground=FG, font=FONT)
         self.chat_output.tag_configure("meta", foreground=FG_DIM, font=FONT_XS)
         self.chat_output.tag_configure("meta_good", foreground=GREEN, font=FONT_XS)
@@ -278,6 +305,12 @@ class RAGApp(tk.Tk):
         self.chat_output.tag_configure("welcome_sub", foreground=FG_DIM, font=FONT_SM, justify="center")
         self.chat_output.tag_configure("source", foreground=AMBER, font=FONT_XS)
         self.chat_output.tag_configure("tool_call", foreground=CYAN, font=("Consolas", 10, "italic"))
+        # `<thinking>` blocks: dim italic so the reasoning is visible but
+        # clearly separated from the final answer.
+        self.chat_output.tag_configure(
+            "thinking", foreground=FG_DIM, font=("Segoe UI", 10, "italic"),
+            lmargin1=12, lmargin2=12, rmargin=12, spacing1=4, spacing3=4,
+        )
         self.chat_output.tag_configure("tool_result", foreground=AMBER, font=FONT_XS)
         self.chat_output.tag_configure("bold", foreground=FG_BRIGHT, font=("Segoe UI", 11, "bold"))
         self.chat_output.tag_configure("link", foreground=BLUE, font=("Segoe UI", 11, "underline"))
@@ -352,26 +385,46 @@ class RAGApp(tk.Tk):
 
     def _reset_md_buffer(self):
         self._md_buffer = ""
+        self._in_thinking = False
 
     def _flush_md_safe_prefix(self):
         """Render everything in the buffer up to a point where a markdown
-        construct could not still be opening. Hold back any trailing chars
-        that could be the START of `**bold**` or `[text](url)`.
+        construct or `<thinking>` tag could not still be opening. Hold back
+        any trailing chars that could be the START of one of these:
+          * `**bold**`         (signaled by `*`)
+          * `[text](url)`      (signaled by `[`)
+          * `<thinking>` /     (signaled by `<` IF the tail could still
+            `</thinking>`       complete one of those literal tags)
         """
         buf = self._md_buffer
         if not buf:
             return
-        # Earliest position where an unfinished markdown token could begin.
-        # `*` (could grow into `**bold**`), `[` (could grow into `[text](url)`).
-        # Use first-occurrence, not last — once a `*` appears at position 5,
-        # everything from position 5 onward might be inside a construct.
+
+        # Earliest position where an unfinished construct could begin.
         last_safe = len(buf)
+
         for needle in ("*", "["):
             i = buf.find(needle)
             if i != -1 and i < last_safe:
                 last_safe = i
-        # Safety: if the buffer grows beyond 1000 chars without ever closing
-        # the construct, give up and flush as plain so the UI doesn't stall.
+
+        # `<` is trickier — most `<` characters in normal text aren't tag
+        # openers (e.g. "a<b" arithmetic). Only hold back if the tail
+        # starting at the `<` could plausibly still complete `<thinking>`
+        # or `</thinking>`. Scan every `<` in the buffer and find the
+        # earliest one whose suffix is a valid prefix of either tag.
+        lt = buf.find("<")
+        while lt != -1:
+            tail = buf[lt:]
+            if any(tag.startswith(tail) or tail.startswith(tag)
+                   for tag in ("<thinking>", "</thinking>")):
+                if lt < last_safe:
+                    last_safe = lt
+                break
+            lt = buf.find("<", lt + 1)
+
+        # Safety valve: if we've been holding the entire buffer for too
+        # long, give up and flush as plain so the UI doesn't stall.
         if last_safe == 0 and len(buf) > 1000:
             self._render_plain(buf)
             self._md_buffer = ""
@@ -383,11 +436,44 @@ class RAGApp(tk.Tk):
         self._md_buffer = buf[last_safe:]
 
     def _stream_token_md(self, token: str):
-        """Called for every streamed token. Appends to buffer and flushes
-        any text that's definitely outside a markdown construct.
+        """Called for every streamed token. Appends to buffer, then walks
+        through three layers:
+          1. `<thinking>` / `</thinking>` tags toggle the dimmed-italic mode.
+          2. Complete markdown constructs (**bold**, [text](url)) are
+             rendered inline as they appear.
+          3. Anything left that is definitely outside an open construct is
+             flushed to the chat (`thinking` tag if we're inside one).
         """
         self._md_buffer += token
-        # Flush any complete markdown constructs first.
+        # Initialize the thinking-mode flag on first call.
+        if not hasattr(self, "_in_thinking"):
+            self._in_thinking = False
+
+        # 1) Consume any complete <thinking> / </thinking> tags first.
+        while True:
+            buf = self._md_buffer
+            open_idx = buf.find("<thinking>")
+            close_idx = buf.find("</thinking>")
+            # Prefer whichever tag comes first in the buffer.
+            next_idx = -1
+            next_tag = None
+            if open_idx >= 0 and (close_idx < 0 or open_idx < close_idx):
+                next_idx, next_tag = open_idx, "open"
+            elif close_idx >= 0:
+                next_idx, next_tag = close_idx, "close"
+            if next_idx < 0:
+                break
+            # Flush whatever comes before the tag, in the current style.
+            if next_idx > 0:
+                pre = buf[:next_idx]
+                self._render_plain(pre)
+            # Toggle mode and strip the tag itself from the buffer.
+            self._in_thinking = (next_tag == "open")
+            self._md_buffer = buf[next_idx + (len("<thinking>")
+                                              if next_tag == "open"
+                                              else len("</thinking>")):]
+
+        # 2) Drain complete markdown constructs (only matters outside thinking).
         while True:
             m = self._MD_RE.search(self._md_buffer)
             if not m:
@@ -397,12 +483,14 @@ class RAGApp(tk.Tk):
                 self._render_plain(head)
             if m.group(1) is not None:
                 # **bold**
-                self._append_chat(m.group(1), "bold")
+                tag = "thinking" if self._in_thinking else "bold"
+                self._append_chat(m.group(1), tag)
             else:
-                # [text](url)
+                # [text](url) — render as link even inside thinking.
                 self._render_link(m.group(2), m.group(3))
             self._md_buffer = self._md_buffer[m.end():]
-        # Then flush any trailing safe text.
+
+        # 3) Flush safe prefix in the current style.
         self._flush_md_safe_prefix()
 
     def _flush_md_final(self):
@@ -428,8 +516,12 @@ class RAGApp(tk.Tk):
             self._render_plain(text[idx:])
 
     def _render_plain(self, text: str):
-        if text:
-            self._append_chat(text, "bot_text")
+        if not text:
+            return
+        # Route plain text through the dimmed "thinking" tag while we're
+        # inside a <thinking>…</thinking> block, otherwise standard.
+        tag = "thinking" if getattr(self, "_in_thinking", False) else "bot_text"
+        self._append_chat(text, tag)
 
     def _render_link(self, label: str, url: str):
         self.chat_output.configure(state="normal")
@@ -514,6 +606,13 @@ class RAGApp(tk.Tk):
         if not q:
             return
 
+        # Slash-command shortcuts that bypass the LLM entirely so users
+        # can manage long-term memory without burning tokens.
+        if q.startswith("/"):
+            self.chat_input.delete(0, "end")
+            self._handle_slash_command(q)
+            return
+
         self.is_querying = True
         self.chat_input.delete(0, "end")
         self.send_btn.configure(state="disabled")
@@ -530,6 +629,130 @@ class RAGApp(tk.Tk):
 
         # Stream in background
         threading.Thread(target=self._stream_query, args=(q,), daemon=True).start()
+
+    # ---------- slash-command handler ----------
+
+    SLASH_HELP = (
+        "Memory commands (handled locally, no model call):\n"
+        "  /memory                 list all saved facts\n"
+        "  /memory <search-term>   search saved facts by keyword\n"
+        "  /remember <text>        save a fact to long-term memory\n"
+        "  /forget <id>            delete fact with that numeric id\n"
+        "  /clear memory           wipe all stored memory (DESTRUCTIVE)\n"
+        "  /clear history          clear the current chat scrollback\n"
+        "  /help                   show this list"
+    )
+
+    def _handle_slash_command(self, raw: str):
+        parts = raw.strip().split(None, 1)
+        cmd = parts[0].lower()
+        arg = parts[1].strip() if len(parts) > 1 else ""
+
+        # Always echo the command so the chat reads naturally.
+        self._append_chat("You\n", "user_prefix")
+        self._append_chat(raw + "\n\n", "user_text")
+
+        def out(text: str, tag: str = "bot_text"):
+            self._append_chat("omnigab\n", "bot_prefix")
+            self._append_chat(text + "\n\n", tag)
+
+        if cmd == "/help":
+            out(self.SLASH_HELP)
+            return
+
+        if cmd == "/memory":
+            params = {}
+            if arg:
+                params = {"action": "search", "term": arg}
+            else:
+                params = {"action": "list"}
+            r = self._call_memory_via_api(params)
+            self._render_memory_response(r, out)
+            return
+
+        if cmd == "/remember":
+            if not arg:
+                out("Usage: /remember <text to save>", "error")
+                return
+            r = self._call_memory_via_api({"action": "remember",
+                                            "category": "fact",
+                                            "value": arg})
+            if r.get("ok"):
+                out(f"Saved (id={r.get('id', '?')}):  {arg}", "bot_text")
+            else:
+                out(f"Save failed: {r.get('error', 'unknown')}", "error")
+            return
+
+        if cmd == "/forget":
+            if not arg or not arg.isdigit():
+                out("Usage: /forget <numeric id>  (use /memory to list ids)",
+                    "error")
+                return
+            r = self._call_memory_via_api({"action": "forget", "id": int(arg)})
+            if r.get("ok"):
+                out(f"Forgot row {arg}.", "bot_text")
+            else:
+                out(f"Forget failed: {r.get('error', 'unknown')}", "error")
+            return
+
+        if cmd == "/clear":
+            target = arg.lower()
+            if target == "history":
+                self.chat_output.configure(state="normal")
+                self.chat_output.delete("1.0", "end")
+                self.chat_output.configure(state="disabled")
+                out("Chat scrollback cleared.")
+                return
+            if target == "memory":
+                if not messagebox.askyesno(
+                    "Clear all memory?",
+                    "This deletes every stored fact, preference, and instruction. "
+                    "It cannot be undone. Continue?"
+                ):
+                    out("Cancelled. Memory unchanged.", "bot_text")
+                    return
+                r = self._call_memory_via_api({"action": "clear_all"})
+                if r.get("ok"):
+                    out(f"Memory cleared ({r.get('removed', 0)} rows).",
+                        "bot_text")
+                else:
+                    out(f"Clear failed: {r.get('error', 'unknown')}", "error")
+                return
+            out("Usage: /clear history  OR  /clear memory", "error")
+            return
+
+        out(f"Unknown command: {cmd}\n\n{self.SLASH_HELP}", "error")
+
+    def _call_memory_via_api(self, arguments: dict) -> dict:
+        """Direct hit on the persistent_memory tool through the backend so the
+        UI doesn't need its own SQLite handle. POSTs to /api/tool/run."""
+        try:
+            r = api_post("/api/tool/run",
+                         {"name": "persistent_memory", "arguments": arguments})
+            return r if isinstance(r, dict) else {"ok": False, "error": "bad response"}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def _render_memory_response(self, r: dict, out):
+        if r.get("error"):
+            out(f"Memory error: {r['error']}", "error")
+            return
+        rows = r.get("rows") or r.get("matches") or []
+        if not rows:
+            out("(no saved memory)", "bot_text")
+            return
+        lines = []
+        for row in rows:
+            row_id = row.get("id", "?")
+            cat = row.get("category", "?")
+            key = row.get("key") or ""
+            val = row.get("value") or row.get("text") or ""
+            head = f"  #{row_id}  [{cat}]"
+            if key:
+                head += f"  {key}"
+            head += f"  →  {val}"
+            lines.append(head)
+        out("\n".join(lines))
 
     def _stream_query(self, question):
         meta = None
@@ -1056,6 +1279,12 @@ class RAGApp(tk.Tk):
                 text=f"Loaded {friendly_name}", fg=GREEN))
             self.after(0, self._load_models)
             self.after(0, self._load_sysinfo)
+            # Refresh the topbar status badge — the tool-calling tier just
+            # changed because the model did. Without this, the badge keeps
+            # whatever stale value (often "broken (switch to 7B/14B)") it
+            # picked up during the brief window before the model finished
+            # loading on first boot.
+            self.after(0, self._load_status)
         threading.Thread(target=do, daemon=True).start()
 
     def _download_model(self, filename, info):
@@ -1312,7 +1541,18 @@ class RAGApp(tk.Tk):
             self.after(0, self._load_models)
             self.after(0, self._load_memory)
             self.after(0, self._refresh_resume_status)
+            # Slow background poll: refreshes the topbar badges every 20s
+            # so the tool-status tier reflects the currently-loaded model
+            # even after model swaps or first-boot loading races.
+            self._schedule_status_poll()
         threading.Thread(target=do, daemon=True).start()
+
+    def _schedule_status_poll(self, interval_ms: int = 20000):
+        self.after(interval_ms, self._tick_status_poll, interval_ms)
+
+    def _tick_status_poll(self, interval_ms: int):
+        self._load_status()
+        self.after(interval_ms, self._tick_status_poll, interval_ms)
 
     def _load_status(self):
         def do():
@@ -1349,7 +1589,7 @@ def main():
 
     if not already_running:
         print()
-        print("  Starting OmniAgent server...")
+        print("  Starting omnigab server...")
         print("  (Loading model, this may take a minute)")
         print()
 

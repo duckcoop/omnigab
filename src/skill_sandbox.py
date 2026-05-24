@@ -18,7 +18,7 @@ sandbox that:
 This is in-process sandboxing - not a security boundary against
 intentionally malicious native code - but it is enough to keep an
 honest skill from accidentally reaching into ~/.ssh or scraping
-$OMNIAGENT_API_TOKEN, and to keep a buggy skill from corrupting the rest
+$OMNIGAB_API_TOKEN, and to keep a buggy skill from corrupting the rest
 of the project.
 """
 

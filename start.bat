@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title OmniAgent
+title omnigab
 cd /d "%~dp0"
 
 :: Quick sanity checks

@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">OmniAgent</h1>
+  <h1 align="center">omnigab</h1>
   <p align="center">
     <strong>A universal local AI agent that runs 100% on your computer.</strong><br>
     Tool-calling LLM · document search · web search · persistent memory · Indeed job automation.<br>
@@ -17,7 +17,7 @@
 
 ## What this is
 
-OmniAgent is a tool-calling local LLM. The model is the brain: it reads your message, decides whether to chat, search your local documents, hit the web, save/recall persistent memory, or fire a built-in skill (e.g. the Indeed apply tool). Everything happens on your hardware.
+omnigab is a tool-calling local LLM. The model is the brain: it reads your message, decides whether to chat, search your local documents, hit the web, save/recall persistent memory, or fire a built-in skill (e.g. the Indeed apply tool). Everything happens on your hardware.
 
 * **Model**: Qwen2.5 (1.5B → 14B) in GGUF format, served by `llama-cpp-python`.
 * **GPU offload**: full CUDA support on NVIDIA GPUs (auto-detected, all layers offloaded).
@@ -59,8 +59,8 @@ Must print `Python 3.12.x`. If it prints `3.13` or `3.14`, uninstall those — `
 ### 2. Clone the repository
 
 ```cmd
-git clone https://github.com/<your-fork>/omniagent.git
-cd omniagent
+git clone https://github.com/<your-fork>/omnigab.git
+cd omnigab
 ```
 
 (Or download the ZIP from GitHub and extract.)
@@ -90,13 +90,13 @@ First run takes 5–10 minutes of downloads (mostly `torch` + the model). Subseq
 
 ### 4. Launch later
 
-After the first successful setup, double-click **`OmniAgent.bat`** in the project root. It skips the install phase and goes straight to the app.
+After the first successful setup, double-click **`omnigab.bat`** in the project root. It skips the install phase and goes straight to the app.
 
 ---
 
 ## Hardware auto-tuning
 
-On first launch with no saved model preference, OmniAgent picks the best model that fits your machine:
+On first launch with no saved model preference, omnigab picks the best model that fits your machine:
 
 | VRAM (GPU) | System RAM | Auto-selected model | Tokens/sec |
 |---|---|---|---|
@@ -109,7 +109,7 @@ You can switch models at any time from the **Models** tab inside the app. Each e
 
 ---
 
-## Using OmniAgent
+## Using omnigab
 
 The chat is plain-English. Examples that route to specific tools:
 
@@ -128,9 +128,9 @@ The model never **narrates** intentions — if it's going to use a tool, the ver
 ## Project structure
 
 ```
-omniagent/
+omnigab/
 ├── setup.bat                  # one-click install (Windows)
-├── OmniAgent.bat              # launcher (post-install)
+├── omnigab.bat              # launcher (post-install)
 ├── desktop_app.py             # tkinter desktop UI
 ├── requirements.txt
 ├── scripts/
@@ -150,7 +150,7 @@ omniagent/
 ├── data/
 │   ├── docs/                  # Documents to index (PDF, MD, TXT, etc.)
 │   ├── playwright_profile/    # Persistent Indeed login session
-│   └── omniagent.db           # Persistent memory store
+│   └── omnigab.db           # Persistent memory store
 └── models/                    # GGUF model files
 ```
 

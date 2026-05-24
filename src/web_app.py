@@ -1,4 +1,4 @@
-"""Web UI / API for OmniAgent.
+"""Web UI / API for omnigab.
 
 Rewired around the new architecture:
 
@@ -56,7 +56,7 @@ from vectorstore import VectorStore
 from web_search import WebSearchEngine
 
 
-app = FastAPI(title="OmniAgent")
+app = FastAPI(title="omnigab")
 
 # Globals built at startup.
 mm: ModelManager | None = None
@@ -165,7 +165,7 @@ def startup():
     """Initialize models, embedder, vectorstore, agent, and tools once."""
     global mm, agent, embedder, store, web_search, memory, persistent_memory
 
-    print("Loading OmniAgent...")
+    print("Loading omnigab...")
 
     embedder = EmbeddingEngine()
     store = VectorStore()
@@ -704,6 +704,31 @@ def api_system_info():
         "docs_dir": str(DOCS_DIR),
         "models_dir": str(MODELS_DIR),
     })
+
+
+@app.post("/api/tool/run")
+async def api_tool_run(request: Request):
+    """Invoke a registered tool directly. Used by slash-command UI paths
+    that need to talk to a tool without going through the LLM.
+    Body: {"name": "<tool_name>", "arguments": { ... }}
+    """
+    body = await request.json()
+    tool_name = (body.get("name") or "").strip()
+    arguments = body.get("arguments") or {}
+    if not isinstance(arguments, dict):
+        return JSONResponse({"error": "arguments must be an object"}, status_code=400)
+    if agent is None:
+        return JSONResponse({"error": "Agent not ready"}, status_code=503)
+    tool = agent.tools.get(tool_name)
+    if tool is None:
+        return JSONResponse({"error": f"unknown tool: {tool_name}"}, status_code=404)
+    try:
+        output = await asyncio.to_thread(tool.run, arguments)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+    if isinstance(output, dict):
+        return JSONResponse(output)
+    return JSONResponse({"ok": True, "output": output})
 
 
 @app.get("/api/audit")

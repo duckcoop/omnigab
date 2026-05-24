@@ -47,7 +47,7 @@ def print_header():
     console.print()
     console.print(
         Panel(
-            "[bold white]🛡️  OmniAgent[/bold white]\n"
+            "[bold white]🛡️  omnigab[/bold white]\n"
             "[dim]Local AI agent with tool-calling, RAG, and verification[/dim]",
             border_style="bright_cyan",
             padding=(1, 4),

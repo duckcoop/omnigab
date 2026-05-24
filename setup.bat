@@ -1,11 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
-title OmniAgent - Setup
+title omnigab - Setup
 cd /d "%~dp0"
 
 echo.
 echo  =============================================
-echo    OmniAgent - One-Click Setup
+echo    omnigab - One-Click Setup
 echo  =============================================
 echo.
 
@@ -41,12 +41,12 @@ echo [OK] Found Python: %PYTHON%
 :: -----------------------------------------------
 :: Prebuilt CUDA wheels for llama-cpp-python (and many ML deps) target
 :: Python 3.10-3.12. Newer Python = no wheel = silent CPU fallback or
-:: source-build failure. OmniAgent locks to 3.12 to keep installs sane.
+:: source-build failure. omnigab locks to 3.12 to keep installs sane.
 %PYTHON% -c "import sys; sys.exit(0 if sys.version_info[:2] == (3, 12) else 1)" 2>nul
 if errorlevel 1 (
     echo.
     echo  =============================================
-    echo    [ERROR] OmniAgent requires Python 3.12.
+    echo    [ERROR] omnigab requires Python 3.12.
     echo  =============================================
     echo.
     %PYTHON% -c "import sys; print(f'   You are running: Python {sys.version.split()[0]}')"
@@ -187,7 +187,7 @@ if not exist "%~dp0vectorstore\faiss_index" (
 :: -----------------------------------------------
 echo.
 echo  =============================================
-echo    OmniAgent setup complete!
+echo    omnigab setup complete!
 if "!GPU_PRESENT!"=="1" (
     echo    GPU:  ENABLED  ^(!GPU_NAME!, VRAM: !VRAM_GB! GB^)
 ) else (
@@ -202,7 +202,7 @@ echo.
 ::                 (handy when re-running setup to confirm dependencies)
 if "%1"=="--no-launch" (
     echo Setup verified. Skipping launch ^(--no-launch^).
-    echo Run OmniAgent.bat to start the app.
+    echo Run omnigab.bat to start the app.
     pause
     exit /b 0
 )

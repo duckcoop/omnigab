@@ -18,7 +18,7 @@ class PersistentMemoryTool:
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["remember", "search", "list", "forget"],
+                "enum": ["remember", "search", "list", "forget", "clear_all"],
             },
             "category": {
                 "type": "string",
@@ -28,6 +28,7 @@ class PersistentMemoryTool:
             "key": {"type": "string"},
             "value": {"type": "string"},
             "term": {"type": "string", "description": "Search term for action=search"},
+            "id": {"type": "integer", "description": "Row id for action=forget"},
         },
         "required": ["action"],
     }
@@ -40,27 +41,72 @@ class PersistentMemoryTool:
         category = str(arguments.get("category") or "fact")
 
         if action == "remember":
-            key = str(arguments.get("key") or "").strip()
             value = str(arguments.get("value") or "").strip()
-            if not key or not value:
-                return {"ok": False, "error": "remember requires key and value"}
+            if not value:
+                return {"ok": False, "error": "remember requires value"}
+            # `key` is optional from slash-command callers (/remember <text>);
+            # auto-generate one from the first few words so put() always has
+            # something to hash on.
+            key = str(arguments.get("key") or "").strip()
+            if not key:
+                key = " ".join(value.split()[:6])[:80] or "fact"
             row_id = self.pm.put(category, key, value, source="agent")
             return {"ok": True, "id": row_id, "stored": {category: {key: value}}}
 
         if action == "search":
             term = str(arguments.get("term") or arguments.get("key") or "").strip()
             if not term:
-                return {"ok": False, "error": "search requires term"}
+                # Treat empty search as "list everything", which is what users
+                # expect when they type `/memory` with no args.
+                rows = self.pm.list_all() if hasattr(self.pm, "list_all") else self.pm.all_rows()
+                return {"ok": True, "rows": rows, "count": len(rows)}
             rows = self.pm.search(term)
-            return {"ok": True, "matches": rows, "count": len(rows)}
+            return {"ok": True, "matches": rows, "rows": rows, "count": len(rows)}
 
         if action == "list":
+            # No category filter → return everything so /memory shows the
+            # full store, not just one category bucket.
+            if not arguments.get("category"):
+                rows = self.pm.list_all() if hasattr(self.pm, "list_all") else self.pm.all_rows()
+                return {"ok": True, "rows": rows, "count": len(rows)}
             rows = self.pm.list_by_category(category)
             return {"ok": True, "category": category, "rows": rows, "count": len(rows)}
 
         if action == "forget":
+            row_id = arguments.get("id")
+            if row_id is not None:
+                try:
+                    rid = int(row_id)
+                except (TypeError, ValueError):
+                    return {"ok": False, "error": "id must be an integer"}
+                # Use a direct delete-by-id if the store supports it.
+                if hasattr(self.pm, "forget_by_id"):
+                    removed = self.pm.forget_by_id(rid)
+                    return {"ok": True, "removed": removed}
+                # Fallback: list all, find the matching row, forget by key.
+                all_rows = (self.pm.list_all() if hasattr(self.pm, "list_all")
+                            else self.pm.all_rows())
+                for row in all_rows:
+                    if row.get("id") == rid:
+                        removed = self.pm.forget(category=row.get("category"),
+                                                  key=row.get("key"))
+                        return {"ok": True, "removed": removed}
+                return {"ok": False, "error": f"no row with id {rid}"}
             key = arguments.get("key")
             removed = self.pm.forget(category=category if category else None, key=key)
+            return {"ok": True, "removed": removed}
+
+        if action == "clear_all":
+            if hasattr(self.pm, "clear_all"):
+                removed = self.pm.clear_all()
+            else:
+                # Fallback: forget each row individually.
+                rows = (self.pm.list_all() if hasattr(self.pm, "list_all")
+                        else self.pm.all_rows())
+                removed = 0
+                for row in rows:
+                    removed += self.pm.forget(category=row.get("category"),
+                                               key=row.get("key"))
             return {"ok": True, "removed": removed}
 
         return {"ok": False, "error": f"unknown action: {action}"}

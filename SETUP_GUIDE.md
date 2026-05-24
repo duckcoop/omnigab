@@ -24,11 +24,11 @@ You should see something like `Python 3.12.x` or `Python 3.14.x`.
 
 **Option A** (with Git):
 ```
-git clone https://github.com/duckcoop/local-rag-agent.git
-cd local-rag-agent
+git clone https://github.com/duckcoop/omniagent.git
+cd omniagent
 ```
 
-**Option B** (without Git): Go to [github.com/duckcoop/local-rag-agent](https://github.com/duckcoop/local-rag-agent), click the green **Code** button, click **Download ZIP**, extract it somewhere, and open the extracted folder.
+**Option B** (without Git): Go to [github.com/duckcoop/omniagent](https://github.com/duckcoop/omniagent), click the green **Code** button, click **Download ZIP**, extract it somewhere, and open the extracted folder.
 
 ---
 

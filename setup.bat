@@ -1,11 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
-title Local RAG Agent - Setup
+title OmniAgent - Setup
 cd /d "%~dp0"
 
 echo.
 echo  =============================================
-echo    Local RAG Agent - One-Click Setup
+echo    OmniAgent - One-Click Setup
 echo  =============================================
 echo.
 
@@ -13,353 +13,204 @@ echo.
 :: 1. Find Python
 :: -----------------------------------------------
 set "PYTHON="
-
-:: Check common names on PATH
 where python >nul 2>&1 && set "PYTHON=python" && goto :found_python
 where python3 >nul 2>&1 && set "PYTHON=python3" && goto :found_python
 where py >nul 2>&1 && set "PYTHON=py" && goto :found_python
 
-:: Scan common install locations (handles any Python 3.x version)
 for /d %%D in ("C:\Users\%USERNAME%\AppData\Local\Python\pythoncore-3.*") do (
-    if exist "%%D\python.exe" (
-        set "PYTHON=%%D\python.exe"
-        goto :found_python
-    )
+    if exist "%%D\python.exe" ( set "PYTHON=%%D\python.exe" & goto :found_python )
 )
 for /d %%D in ("C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python3*") do (
-    if exist "%%D\python.exe" (
-        set "PYTHON=%%D\python.exe"
-        goto :found_python
-    )
+    if exist "%%D\python.exe" ( set "PYTHON=%%D\python.exe" & goto :found_python )
 )
 for /d %%D in ("C:\Python3*") do (
-    if exist "%%D\python.exe" (
-        set "PYTHON=%%D\python.exe"
-        goto :found_python
-    )
+    if exist "%%D\python.exe" ( set "PYTHON=%%D\python.exe" & goto :found_python )
 )
 
-echo [ERROR] Python not found. Please install Python 3.10+ from https://www.python.org
-echo         Make sure to check "Add Python to PATH" during installation.
-echo.
+echo [ERROR] Python not found. Install Python 3.10-3.12 from https://www.python.org
 pause
 exit /b 1
 
 :found_python
 echo [OK] Found Python: %PYTHON%
 
-:: Verify it's Python 3.10+
-%PYTHON% -c "import sys; assert sys.version_info >= (3, 10), f'Need 3.10+, got {sys.version}'" 2>nul
-if errorlevel 1 (
-    echo [ERROR] Python 3.10 or higher is required.
-    %PYTHON% --version
-    pause
-    exit /b 1
-)
 %PYTHON% --version
 
 :: -----------------------------------------------
-:: 2. Create virtual environment (if needed)
+:: Strict Python 3.12 enforcement
+:: -----------------------------------------------
+:: Prebuilt CUDA wheels for llama-cpp-python (and many ML deps) target
+:: Python 3.10-3.12. Newer Python = no wheel = silent CPU fallback or
+:: source-build failure. OmniAgent locks to 3.12 to keep installs sane.
+%PYTHON% -c "import sys; sys.exit(0 if sys.version_info[:2] == (3, 12) else 1)" 2>nul
+if errorlevel 1 (
+    echo.
+    echo  =============================================
+    echo    [ERROR] OmniAgent requires Python 3.12.
+    echo  =============================================
+    echo.
+    %PYTHON% -c "import sys; print(f'   You are running: Python {sys.version.split()[0]}')"
+    echo.
+    echo   Why: prebuilt CUDA wheels for llama-cpp-python only ship for
+    echo        Python 3.10-3.12. Newer Pythons silently fall back to CPU
+    echo        or fail to install GPU acceleration entirely.
+    echo.
+    echo   How to fix:
+    echo     1. Install Python 3.12 from https://www.python.org/downloads/release/python-3128/
+    echo        ^(any 3.12.x release works^).
+    echo     2. During install, check "Add python.exe to PATH".
+    echo     3. Delete the existing venv folder in this directory:
+    echo          rmdir /s /q venv
+    echo     4. Rerun setup.bat
+    echo.
+    echo   Tip: you can keep your other Python versions installed; the venv
+    echo        will pick whichever python is first on PATH after rebuild.
+    echo.
+    pause
+    exit /b 1
+)
+echo [OK] Python 3.12 confirmed.
+
+:: -----------------------------------------------
+:: 2. Virtual environment
 :: -----------------------------------------------
 echo.
 if exist "venv\Scripts\activate.bat" (
-    echo [OK] Virtual environment already exists.
+    echo [OK] venv already exists.
 ) else (
-    echo [SETUP] Creating virtual environment...
+    echo [SETUP] Creating venv...
     %PYTHON% -m venv venv
     if errorlevel 1 (
-        echo [ERROR] Failed to create virtual environment.
+        echo [ERROR] venv creation failed.
         pause
         exit /b 1
     )
-    echo [OK] Virtual environment created.
 )
-
-:: Activate it
 call venv\Scripts\activate.bat
 
 :: -----------------------------------------------
-:: 3. Install dependencies
+:: 3. GPU detection (delegated to scripts/detect_gpu.py)
 :: -----------------------------------------------
+:: Python helper sidesteps cmd batch quirks (commas in nvidia-smi args,
+:: stderr leaking through 2>nul before redirect parsing, etc.).
 echo.
-echo [SETUP] Installing dependencies (this may take a few minutes on first run)...
-echo.
+echo [SETUP] Detecting NVIDIA GPU...
+set "GPU_PRESENT=0"
+set "GPU_NAME="
+set "VRAM_GB=0"
 
-pip install --upgrade pip --quiet 2>nul
-
-:: Install llama-cpp-python from pre-built wheels (avoids needing a C++ compiler)
-echo [SETUP] Installing llama-cpp-python (pre-built wheel)...
-pip install llama-cpp-python --prefer-binary --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu --quiet
-if errorlevel 1 (
-    echo [WARNING] Pre-built wheel not found for your Python version. Trying PyPI...
-    pip install llama-cpp-python --prefer-binary --quiet
-    if errorlevel 1 (
-        echo [ERROR] llama-cpp-python failed to install.
-        echo         This usually means your Python version is too new for pre-built wheels.
-        echo         Install Python 3.12 from https://www.python.org and try again,
-        echo         or install Visual Studio Build Tools for C++ compilation.
-        pause
-        exit /b 1
-    )
+for /f "usebackq tokens=1,2,3 delims=|" %%A in (`%PYTHON% "%~dp0scripts\detect_gpu.py" 2^>nul`) do (
+    set "GPU_PRESENT=%%A"
+    set "GPU_NAME=%%B"
+    set "VRAM_GB=%%C"
 )
 
-:: Install remaining dependencies
+if "!GPU_PRESENT!"=="1" (
+    echo [OK] NVIDIA GPU: !GPU_NAME!  ^(VRAM: !VRAM_GB! GB^)
+) else (
+    echo [INFO] No NVIDIA GPU detected. CPU-only.
+)
+
+:: -----------------------------------------------
+:: 4. Install dependencies
+:: -----------------------------------------------
+:: llama-cpp-python install is delegated to scripts/install_llama_cpp.py.
+:: That helper handles the GPU/CPU wheel cascade, CUDA runtime DLL install,
+:: and post-install verification in one place. Keeping it in Python avoids
+:: cmd batch nested-paren miscounts that bit us before.
+echo.
+echo [SETUP] Installing dependencies...
+pip install --upgrade pip --quiet 2>nul
+
+echo [SETUP] Installing llama-cpp-python ^(GPU/CPU wheel selected automatically^)...
+python "%~dp0scripts\install_llama_cpp.py"
+if errorlevel 1 (
+    echo [ERROR] Could not install llama-cpp-python at all.
+    pause
+    exit /b 1
+)
+
+:: --- Step 4e: project requirements ---
+echo.
+echo [SETUP] Installing application dependencies: fastapi, uvicorn, sentence-transformers, faiss, etc.
 pip install -r requirements.txt --quiet
 if errorlevel 1 (
-    echo.
-    echo [WARNING] Some packages had issues. Retrying without --quiet...
+    echo [WARNING] Some packages had issues. Retrying with output...
     pip install -r requirements.txt
 )
 
-:: Make sure huggingface-hub is installed (needed for model download)
-pip install huggingface-hub --quiet 2>nul
+:: --- Step 4f: Playwright browser (used by the Indeed apply tool) ---
+echo.
+echo [SETUP] Installing Playwright Chromium browser...
+python -m playwright install chromium 2>nul
+if errorlevel 1 (
+    echo [WARNING] Chromium install failed. The Indeed apply tool will not work
+    echo           until you run:  venv\Scripts\python.exe -m playwright install chromium
+) else (
+    echo [OK] Playwright + Chromium ready.
+)
 
 echo.
 echo [OK] Dependencies installed.
 
 :: -----------------------------------------------
-:: 4. Download model (if needed)
+:: 5. Download default model
 :: -----------------------------------------------
 set "MODELS_DIR=%~dp0models"
 set "GGUF_MODEL=%MODELS_DIR%\qwen2.5-1.5b-instruct-q4_k_m.gguf"
 
-if exist "%GGUF_MODEL%" (
+if not exist "%GGUF_MODEL%" (
     echo.
-    echo [OK] Model already downloaded.
-    goto :start_app
-)
-
-echo.
-echo [SETUP] Downloading Qwen2.5-1.5B-Instruct model (~1.1 GB)...
-echo         This is a one-time download. Please be patient.
-echo.
-
-if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
-
-:: Use the venv's huggingface-cli directly (full path, no PATH issues)
-"%~dp0venv\Scripts\huggingface-cli.exe" download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir "%MODELS_DIR%"
-
-if exist "%GGUF_MODEL%" (
-    echo.
-    echo [OK] Model downloaded successfully!
-) else (
-    echo.
-    echo [ERROR] Model download failed. This usually means a network issue.
-    echo         You can retry by running this script again, or download manually:
-    echo         https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF
-    echo         Save qwen2.5-1.5b-instruct-q4_k_m.gguf into the models\ folder.
-    echo.
-    pause
-    exit /b 1
-)
-
-:: -----------------------------------------------
-:: 5. Ingest sample docs (if vectorstore is empty)
-:: -----------------------------------------------
-:start_app
-if not exist "%~dp0vectorstore\faiss_index" (
-    if exist "%~dp0data\docs" (
-        echo.
-        echo [SETUP] Building vector index from docs...
-        python "%~dp0src\rag_agent.py" ingest 2>nul
-        if exist "%~dp0vectorstore\faiss_index" (
-            echo [OK] Vector index built.
-        )
-    )
-)
-
-:: -----------------------------------------------
-:: 6. Launch the chat
-:: -----------------------------------------------
-echo.
-echo  =============================================
-echo    Setup complete! Launching chat...
-echo  =============================================
-echo.
-echo   Web UI:      http://localhost:8000
-echo   Terminal UI: Close this window and run start.bat --terminal
-echo.
-
-:: Check if user wants terminal mode
-if "%1"=="--terminal" (
-    python "%~dp0src\demo_ui.py"
-) else (
-    :: Default to web UI - open browser and start server
-    start "" http://localhost:8000
-    python "%~dp0src\web_app.py"
-)
-
-pause@echo off
-setlocal enabledelayedexpansion
-title Local RAG Agent - Setup
-cd /d "%~dp0"
-
-echo.
-echo  =============================================
-echo    Local RAG Agent - One-Click Setup
-echo  =============================================
-echo.
-
-:: -----------------------------------------------
-:: 1. Find Python
-:: -----------------------------------------------
-set "PYTHON="
-
-:: Check common names on PATH
-where python >nul 2>&1 && set "PYTHON=python" && goto :found_python
-where python3 >nul 2>&1 && set "PYTHON=python3" && goto :found_python
-where py >nul 2>&1 && set "PYTHON=py" && goto :found_python
-
-:: Scan common install locations (handles any Python 3.x version)
-for /d %%D in ("C:\Users\%USERNAME%\AppData\Local\Python\pythoncore-3.*") do (
-    if exist "%%D\python.exe" (
-        set "PYTHON=%%D\python.exe"
-        goto :found_python
-    )
-)
-for /d %%D in ("C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python3*") do (
-    if exist "%%D\python.exe" (
-        set "PYTHON=%%D\python.exe"
-        goto :found_python
-    )
-)
-for /d %%D in ("C:\Python3*") do (
-    if exist "%%D\python.exe" (
-        set "PYTHON=%%D\python.exe"
-        goto :found_python
-    )
-)
-
-echo [ERROR] Python not found. Please install Python 3.10+ from https://www.python.org
-echo         Make sure to check "Add Python to PATH" during installation.
-echo.
-pause
-exit /b 1
-
-:found_python
-echo [OK] Found Python: %PYTHON%
-
-:: Verify it's Python 3.10+
-%PYTHON% -c "import sys; assert sys.version_info >= (3, 10), f'Need 3.10+, got {sys.version}'" 2>nul
-if errorlevel 1 (
-    echo [ERROR] Python 3.10 or higher is required.
-    %PYTHON% --version
-    pause
-    exit /b 1
-)
-%PYTHON% --version
-
-:: -----------------------------------------------
-:: 2. Create virtual environment (if needed)
-:: -----------------------------------------------
-echo.
-if exist "venv\Scripts\activate.bat" (
-    echo [OK] Virtual environment already exists.
-) else (
-    echo [SETUP] Creating virtual environment...
-    %PYTHON% -m venv venv
-    if errorlevel 1 (
-        echo [ERROR] Failed to create virtual environment.
+    echo [SETUP] Downloading default Qwen2.5-1.5B model ^(~1.1 GB^)...
+    if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
+    "%~dp0venv\Scripts\huggingface-cli.exe" download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir "%MODELS_DIR%"
+    if not exist "%GGUF_MODEL%" (
+        echo [ERROR] Model download failed.
         pause
         exit /b 1
     )
-    echo [OK] Virtual environment created.
-)
-
-:: Activate it
-call venv\Scripts\activate.bat
-
-:: -----------------------------------------------
-:: 3. Install dependencies
-:: -----------------------------------------------
-echo.
-echo [SETUP] Installing dependencies (this may take a few minutes on first run)...
-echo.
-
-pip install --upgrade pip --quiet 2>nul
-pip install -r requirements.txt --quiet
-if errorlevel 1 (
-    echo.
-    echo [WARNING] Some packages had issues. Retrying without --quiet...
-    pip install -r requirements.txt
-)
-
-:: Make sure huggingface-hub is installed (needed for model download)
-pip install huggingface-hub --quiet 2>nul
-
-echo.
-echo [OK] Dependencies installed.
-
-:: -----------------------------------------------
-:: 4. Download model (if needed)
-:: -----------------------------------------------
-set "MODELS_DIR=%~dp0models"
-set "GGUF_MODEL=%MODELS_DIR%\qwen2.5-1.5b-instruct-q4_k_m.gguf"
-
-if exist "%GGUF_MODEL%" (
-    echo.
-    echo [OK] Model already downloaded.
-    goto :start_app
-)
-
-echo.
-echo [SETUP] Downloading Qwen2.5-1.5B-Instruct model (~1.1 GB)...
-echo         This is a one-time download. Please be patient.
-echo.
-
-if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
-
-:: Use the venv's huggingface-cli directly (full path, no PATH issues)
-"%~dp0venv\Scripts\huggingface-cli.exe" download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir "%MODELS_DIR%"
-
-if exist "%GGUF_MODEL%" (
-    echo.
-    echo [OK] Model downloaded successfully!
-) else (
-    echo.
-    echo [ERROR] Model download failed. This usually means a network issue.
-    echo         You can retry by running this script again, or download manually:
-    echo         https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF
-    echo         Save qwen2.5-1.5b-instruct-q4_k_m.gguf into the models\ folder.
-    echo.
-    pause
-    exit /b 1
 )
 
 :: -----------------------------------------------
-:: 5. Ingest sample docs (if vectorstore is empty)
+:: 6. Build vector index if empty
 :: -----------------------------------------------
-:start_app
 if not exist "%~dp0vectorstore\faiss_index" (
     if exist "%~dp0data\docs" (
         echo.
         echo [SETUP] Building vector index from docs...
         python "%~dp0src\rag_agent.py" ingest 2>nul
-        if exist "%~dp0vectorstore\faiss_index" (
-            echo [OK] Vector index built.
-        )
     )
 )
 
 :: -----------------------------------------------
-:: 6. Launch the chat
+:: 7. Summary + launch
 :: -----------------------------------------------
 echo.
 echo  =============================================
-echo    Setup complete! Launching chat...
+echo    OmniAgent setup complete!
+if "!GPU_PRESENT!"=="1" (
+    echo    GPU:  ENABLED  ^(!GPU_NAME!, VRAM: !VRAM_GB! GB^)
+) else (
+    echo    GPU:  CPU only
+)
 echo  =============================================
 echo.
-echo   Web UI:      http://localhost:8000
-echo   Terminal UI: Close this window and run start.bat --terminal
-echo.
 
-:: Check if user wants terminal mode
+:: Flags:
+::   --terminal    launch the CLI demo instead of the desktop UI
+::   --no-launch   complete install verification only; do not start anything
+::                 (handy when re-running setup to confirm dependencies)
+if "%1"=="--no-launch" (
+    echo Setup verified. Skipping launch ^(--no-launch^).
+    echo Run OmniAgent.bat to start the app.
+    pause
+    exit /b 0
+)
+
 if "%1"=="--terminal" (
     python "%~dp0src\demo_ui.py"
 ) else (
-    :: Default to web UI - open browser and start server
-    start "" http://localhost:8000
-    python "%~dp0src\web_app.py"
+    python "%~dp0desktop_app.py"
 )
 
 pause

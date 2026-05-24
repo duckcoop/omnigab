@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title Local RAG Agent
+title OmniAgent
 cd /d "%~dp0"
 
 :: Quick sanity checks
@@ -24,9 +24,9 @@ if "%1"=="--terminal" (
     echo.
     python "%~dp0src\demo_ui.py"
 ) else (
-    echo Starting web UI at http://localhost:8000 ...
+    echo Starting web UI at http://localhost:8080 ...
     echo.
-    start "" http://localhost:8000
+    start "" http://localhost:8080
     python "%~dp0src\web_app.py"
 )
 

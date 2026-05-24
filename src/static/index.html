@@ -3,33 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RAG Agent v2.0</title>
+<title>OmniAgent</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Fira+Code:wght@300;400;500;700&display=swap');
 
   :root {
-    --bg: #0a0e14;
-    --bg-surface: #0d1117;
-    --bg-raised: #131921;
-    --bg-input: #0b0f15;
-    --border: #1e2a3a;
-    --border-focus: #39ff14;
-    --text: #c5cdd8;
-    --text-dim: #5a6577;
-    --text-bright: #e6edf5;
-    --green: #39ff14;
-    --green-dim: #1a7a0a;
-    --green-glow: rgba(57, 255, 20, 0.15);
-    --amber: #ffb700;
-    --amber-dim: rgba(255, 183, 0, 0.15);
-    --red: #ff3b30;
-    --red-dim: rgba(255, 59, 48, 0.1);
-    --cyan: #00d4ff;
-    --cyan-dim: rgba(0, 212, 255, 0.1);
-    --purple: #a78bfa;
-    --blue: #58a6ff;
-    --font: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
-    --scanline: rgba(57, 255, 20, 0.03);
+    --bg: #1f1f1c;
+    --bg-surface: #262522;
+    --bg-raised: #30302b;
+    --bg-input: #2b2a26;
+    --border: #3a3833;
+    --border-focus: #d97757;
+    --text: #d8d4c9;
+    --text-dim: #8f8a80;
+    --text-bright: #f4f0e6;
+    --green: #d97757;
+    --green-dim: rgba(217, 119, 87, 0.14);
+    --green-glow: rgba(217, 119, 87, 0.12);
+    --amber: #c6a15b;
+    --amber-dim: rgba(198, 161, 91, 0.14);
+    --red: #e06c62;
+    --red-dim: rgba(224, 108, 98, 0.12);
+    --cyan: #9ab7a5;
+    --cyan-dim: rgba(154, 183, 165, 0.12);
+    --purple: #b8a4d8;
+    --blue: #a9b7d0;
+    --font: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --scanline: transparent;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -42,22 +42,6 @@
     font-size: 13px;
     line-height: 1.6;
     overflow: hidden;
-  }
-
-  /* CRT scanline overlay */
-  body::after {
-    content: '';
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      var(--scanline) 2px,
-      var(--scanline) 4px
-    );
-    pointer-events: none;
-    z-index: 9999;
   }
 
   /* Scrollbar */
@@ -146,8 +130,8 @@
     transition: all 0.15s;
     white-space: nowrap;
     user-select: none;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    text-transform: none;
+    letter-spacing: 0;
   }
 
   .tab:hover {
@@ -267,6 +251,97 @@
 
   .sources-list.open { display: block; }
 
+  /* Agent tool-call display */
+  .tools-container {
+    margin: 4px 0 8px 0;
+    padding: 0;
+  }
+  .tool-call {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    margin: 2px 0;
+    color: var(--text-dim);
+    background: var(--bg-input);
+    border-left: 2px solid var(--cyan);
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tool-arrow { color: var(--cyan); }
+  .tool-name { color: var(--cyan); font-weight: 500; }
+  .tool-args { color: var(--text-dim); opacity: 0.7; }
+  .tool-status { margin-left: auto; font-weight: 700; }
+  .tool-status.tool-ok { color: var(--green); }
+  .tool-status.tool-fail { color: var(--red); }
+
+  /* GPU acceleration badge on Models tab */
+  .gpu-badge {
+    grid-column: 1 / -1;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .gpu-badge.ok {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid var(--green);
+  }
+  .gpu-badge.warn {
+    background: var(--amber-dim);
+    color: var(--amber);
+    border: 1px solid var(--amber);
+  }
+
+  /* Confirmation modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 22px 24px;
+    min-width: 340px;
+    max-width: 520px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
+  .modal-title {
+    color: var(--text-bright);
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .modal-body {
+    color: var(--text);
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .action-btn.primary {
+    background: var(--green);
+    color: var(--bg);
+    border-color: var(--green);
+    font-weight: 600;
+  }
+  .action-btn.primary:hover {
+    background: var(--text-bright);
+  }
+
   .source-item {
     padding: 3px 0;
     color: var(--text-dim);
@@ -328,8 +403,8 @@
     font-size: 12px;
     font-weight: 500;
     transition: all 0.15s;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    text-transform: none;
+    letter-spacing: 0;
   }
 
   .send-btn:hover {
@@ -453,8 +528,8 @@
     font-size: 11px;
     cursor: pointer;
     transition: all 0.15s;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    text-transform: none;
+    letter-spacing: 0;
   }
 
   .action-btn:hover {
@@ -653,17 +728,17 @@
   /* Welcome */
   .welcome-block {
     text-align: center;
-    padding: 40px 20px;
+    padding: 84px 20px 40px;
     color: var(--text-dim);
   }
 
   .welcome-ascii {
-    color: var(--green);
-    font-size: 11px;
-    line-height: 1.3;
-    margin-bottom: 16px;
-    text-shadow: 0 0 10px var(--green-glow);
-    white-space: pre;
+    color: var(--text-bright);
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 42px;
+    line-height: 1.15;
+    margin-bottom: 14px;
+    white-space: normal;
   }
 
   .welcome-sub {
@@ -714,7 +789,7 @@
 
   <!-- Top Bar -->
   <div class="topbar">
-    <div class="topbar-logo">RAG_AGENT <span class="ver">v2.0</span></div>
+    <div class="topbar-logo">OmniAgent</div>
     <span class="topbar-sep">|</span>
     <span style="color:var(--text-dim);font-size:11px" id="topbarModel">loading...</span>
     <div class="topbar-status">
@@ -726,12 +801,12 @@
 
   <!-- Tab Bar -->
   <div class="tabbar">
-    <div class="tab active" onclick="switchTab('chat')"><span class="tab-icon">></span>Chat</div>
-    <div class="tab" onclick="switchTab('jobs')"><span class="tab-icon">></span>Jobs</div>
-    <div class="tab" onclick="switchTab('docs')"><span class="tab-icon">></span>Docs</div>
-    <div class="tab" onclick="switchTab('models')"><span class="tab-icon">></span>Models</div>
-    <div class="tab" onclick="switchTab('settings')"><span class="tab-icon">></span>Settings</div>
-    <div class="tab" onclick="switchTab('dev')"><span class="tab-icon">></span>Developer</div>
+    <div class="tab active" onclick="switchTab('chat')">Chat</div>
+    <div class="tab" onclick="switchTab('jobs')">Jobs</div>
+    <div class="tab" onclick="switchTab('docs')">Docs</div>
+    <div class="tab" onclick="switchTab('models')">Models</div>
+    <div class="tab" onclick="switchTab('settings')">Settings</div>
+    <div class="tab" onclick="switchTab('dev')">Developer</div>
   </div>
 
   <!-- Main content -->
@@ -741,17 +816,9 @@
     <div class="panel active" id="panel-chat">
       <div class="chat-output" id="chatOutput">
         <div class="welcome-block">
-          <div class="welcome-ascii">
- ____      _     ____        _                    _
-|  _ \    / \   / ___|      / \     __ _    ___  | |_
-| |_) |  / _ \ | |  _      / _ \   / _` |  / _ \ | __|
-|  _ <  / ___ \| |_| |    / ___ \ | (_| | |  __/ | |_
-|_| \_\/_/   \_\\____|   /_/   \_\ \__, |  \___|  \__|
-                                    |___/
-          </div>
+          <div class="welcome-ascii">Good evening</div>
           <div class="welcome-sub">
-            Local retrieval-augmented generation with verification layer.
-            Ask questions about your ingested documents.
+            Ask about your documents, use skills, or start with a normal conversation.
           </div>
           <div class="welcome-hints">
             <span onclick="fillQuery('How do I reset a user password?')">password reset</span>
@@ -897,6 +964,10 @@
             <tr><td class="method-get">GET</td><td>/api/docs/list</td><td>List indexed documents</td></tr>
             <tr><td class="method-get">GET</td><td>/api/models</td><td>List available models</td></tr>
             <tr><td class="method-post">POST</td><td>/api/models/switch</td><td>Switch active model</td></tr>
+            <tr><td class="method-get">GET</td><td>/api/skills</td><td>List skills and feedback</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/skills</td><td>Create a new skill</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/skills/{name}/enable</td><td>Enable or disable a skill</td></tr>
+            <tr><td class="method-post">POST</td><td>/api/skills/feedback</td><td>Record skill feedback</td></tr>
             <tr><td class="method-get">GET</td><td>/api/memory</td><td>Get user memory</td></tr>
             <tr><td class="method-post">POST</td><td>/api/memory</td><td>Update user memory</td></tr>
             <tr><td class="method-post">POST</td><td>/api/clear_history</td><td>Clear chat history</td></tr>
@@ -919,6 +990,13 @@
 // ============ STATE ============
 let sessionId = null;
 let isQuerying = false;
+let apiToken = '';
+
+function authHeaders(extra = {}) {
+  const headers = {...extra};
+  if (apiToken) headers['Authorization'] = 'Bearer ' + apiToken;
+  return headers;
+}
 
 // ============ INIT ============
 document.addEventListener('DOMContentLoaded', async () => {
@@ -927,6 +1005,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const r = await fetch('/api/session');
     const d = await r.json();
     sessionId = d.session_id;
+    apiToken = d.api_token || '';
   } catch(e) { sessionId = 'default'; }
 
   loadStatus();
@@ -943,7 +1022,7 @@ function switchTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   // find tab
   document.querySelectorAll('.tab').forEach(t => {
-    if (t.textContent.trim().toLowerCase().replace('>','') === name) t.classList.add('active');
+    if (t.textContent.trim().toLowerCase() === name) t.classList.add('active');
   });
   // Focus chat input when switching to chat
   if (name === 'chat') {
@@ -1043,6 +1122,10 @@ async function sendQuery() {
 
     let fullText = '';
     let metaData = null;
+    const toolCalls = [];
+    const toolsContainer = document.createElement('div');
+    toolsContainer.className = 'tools-container';
+    botDiv.insertBefore(toolsContainer, textSpan);
 
     const response = await fetch('/api/query/stream', {
       method: 'POST',
@@ -1074,39 +1157,44 @@ async function sendQuery() {
             textSpan.innerHTML = formatAnswer(fullText);
             document.getElementById('chatOutput').scrollTop =
               document.getElementById('chatOutput').scrollHeight;
+          } else if (parsed.type === 'tool_start') {
+            const name = parsed.name || '?';
+            const args = JSON.stringify(parsed.arguments || {});
+            toolCalls.push(name);
+            const row = document.createElement('div');
+            row.className = 'tool-call';
+            row.dataset.toolIdx = toolCalls.length - 1;
+            row.innerHTML = `<span class="tool-arrow">→</span> <span class="tool-name">${escapeHtml(name)}</span><span class="tool-args">(${escapeHtml(args.slice(0, 80))})</span> <span class="tool-status">running…</span>`;
+            toolsContainer.appendChild(row);
+          } else if (parsed.type === 'tool_end') {
+            const rows = toolsContainer.querySelectorAll('.tool-call');
+            const row = rows[rows.length - 1];
+            if (row) {
+              const marker = parsed.ok ? '✓' : '✗';
+              const cls = parsed.ok ? 'tool-ok' : 'tool-fail';
+              row.querySelector('.tool-status').outerHTML =
+                `<span class="tool-status ${cls}">${marker}</span>`;
+            }
           } else if (parsed.type === 'meta') {
             metaData = parsed;
+          } else if (parsed.type === 'error') {
+            textSpan.innerHTML += `<br><span style="color:var(--red)">[error] ${escapeHtml(parsed.message || 'unknown')}</span>`;
           }
         } catch(e) {}
       }
     }
 
-    // Add metadata
     if (metaData) {
-      const fScore = metaData.faithfulness || 0;
-      const fClass = fScore >= 0.8 ? 'meta-good' : fScore >= 0.5 ? 'meta-warn' : 'meta-bad';
-      let metaHtml = `
-        <span class="${fClass}">faith: ${(fScore * 100).toFixed(0)}%</span>
-        <span>tokens: ${metaData.tokens || 0}</span>
-        <span>speed: ${(metaData.tps || 0).toFixed(1)} tok/s</span>
-        <span>retrieve: ${metaData.retrieve_time}s</span>
-        <span>generate: ${metaData.generate_time}s</span>
-      `;
-
-      if (metaData.sources && metaData.sources.length > 0) {
-        const srcId = 'src-' + Date.now();
-        metaHtml += `<span class="sources-toggle" onclick="document.getElementById('${srcId}').classList.toggle('open')">
-          [${metaData.sources.length} sources]</span>`;
-        let srcHtml = `<div class="sources-list" id="${srcId}">`;
-        for (const s of metaData.sources) {
-          srcHtml += `<div class="source-item">
-            <span class="src-file">${s.file}</span> chunk ${s.chunk}
-            <span class="src-score">(${(s.score * 100).toFixed(1)}%)</span>
-            </div>`;
-        }
-        srcHtml += '</div>';
-        metaHtml += srcHtml;
+      let metaHtml = '';
+      if (toolCalls.length) {
+        metaHtml += `<span class="meta-good">tools: ${escapeHtml(toolCalls.join(', '))}</span>`;
       }
+      if (metaData.model) {
+        metaHtml += `<span>model: ${escapeHtml(metaData.model)}</span>`;
+      }
+      metaHtml += `<span>tokens: ${metaData.tokens || 0}</span>`;
+      metaHtml += `<span>speed: ${(metaData.tps || 0).toFixed(1)} tok/s</span>`;
+      metaHtml += `<span>elapsed: ${metaData.elapsed || 0}s</span>`;
 
       const metaDiv = document.createElement('div');
       metaDiv.className = 'msg-meta';
@@ -1146,7 +1234,7 @@ async function uploadResume() {
   try {
     const r = await fetch('/api/jobs/upload-resume', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: authHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({text})
     });
     const d = await r.json();
@@ -1169,7 +1257,7 @@ async function searchJobs() {
   try {
     const response = await fetch('/api/jobs/search/stream', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: authHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({title, location, num_results: num})
     });
 
@@ -1271,7 +1359,7 @@ async function reindex() {
   log.innerHTML = logLine('info', 'Starting ingestion pipeline...');
 
   try {
-    const r = await fetch('/api/ingest', {method: 'POST'});
+    const r = await fetch('/api/ingest', {method: 'POST', headers: authHeaders()});
     const d = await r.json();
     if (d.status === 'ok') {
       log.innerHTML += logLine('ok', `Ingestion complete. ${d.vectors} vectors in index.`);
@@ -1287,39 +1375,158 @@ async function reindex() {
 }
 
 // ============ MODELS ============
+let _modelCatalog = [];
+
 async function loadModels() {
   try {
     const r = await fetch('/api/models');
-    const models = await r.json();
+    const payload = await r.json();
+    const models = Array.isArray(payload) ? payload : (payload.models || []);
+    const status = payload.status || {};
+    _modelCatalog = models;
+
     const grid = document.getElementById('modelsList');
-    grid.innerHTML = models.map(m => `
+    let gpuBadge = '';
+    if (status.gpu_supported) {
+      gpuBadge = `<div class="gpu-badge ok">GPU acceleration: ON (layers offloaded: ${status.gpu_layers})</div>`;
+    } else if (status.gpu_supported === false) {
+      gpuBadge = `<div class="gpu-badge warn">GPU acceleration: OFF (no NVIDIA GPU or CPU-only llama-cpp build)</div>`;
+    }
+
+    grid.innerHTML = gpuBadge + models.map(m => {
+      const statusColor = m.downloaded ? 'var(--green)' : 'var(--red)';
+      const activeTag = m.active ? `<span class="meta-good" style="margin-left:8px">[ACTIVE]</span>` : '';
+      let actions = '';
+      if (m.downloaded && !m.active) {
+        actions = `<button class="action-btn" onclick="switchModel('${m.filename}', '${escapeHtml(m.name)}')">Switch</button>`;
+      } else if (!m.downloaded) {
+        actions = `<button class="action-btn" onclick="confirmDownloadModel('${m.filename}')">Download</button>`;
+      }
+      return `
       <div class="card">
-        <div class="card-title">${escapeHtml(m.name)}</div>
+        <div class="card-title">${escapeHtml(m.name)}${activeTag}</div>
         <div class="card-meta">file: <span class="val">${m.filename}</span></div>
         <div class="card-meta">download: <span class="val">${m.size}</span></div>
         <div class="card-meta">RAM: <span class="val">${m.ram}</span></div>
-        <div class="card-meta">status: <span class="val" style="color:${m.downloaded ? 'var(--green)' : 'var(--red)'}">${m.downloaded ? 'downloaded' : 'not downloaded'}</span></div>
-        ${m.downloaded ? `<div class="btn-row"><button class="action-btn" onclick="switchModel('${m.filename}')">Activate</button></div>` : ''}
-      </div>
-    `).join('');
+        <div class="card-meta">status: <span class="val" style="color:${statusColor}">${m.downloaded ? 'downloaded' : 'not downloaded'}</span></div>
+        <div class="btn-row">${actions}</div>
+      </div>`;
+    }).join('');
   } catch(e) {}
 }
 
-async function switchModel(filename) {
+async function switchModel(filename, friendlyName) {
+  const ok = await openConfirmModal(
+    `Switch to ${friendlyName}?`,
+    `This will unload the current model from RAM/VRAM before loading the new one. The chat will pause for a few seconds.`,
+    'Switch'
+  );
+  if (!ok) return;
+
+  showToast(`Loading ${friendlyName}…`, 'info');
   try {
     const r = await fetch('/api/models/switch', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: authHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({filename})
     });
     const d = await r.json();
     if (d.status === 'ok') {
-      showToast(d.message, 'success');
+      showToast(`Loaded ${friendlyName}`, 'success');
+      loadModels();
       loadSystemInfo();
     } else {
       showToast(d.error || 'Switch failed', 'error');
     }
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function confirmDownloadModel(filename) {
+  const info = _modelCatalog.find(m => m.filename === filename) || {};
+  const ok = await openConfirmModal(
+    `Download ${info.name || filename}?`,
+    `<div style="line-height:1.8">
+       <div>File: <span style="color:var(--text-bright)">${escapeHtml(info.filename || filename)}</span></div>
+       <div>Size: <span style="color:var(--text-bright)">${escapeHtml(info.size || '?')}</span></div>
+       <div>RAM at runtime: <span style="color:var(--text-bright)">${escapeHtml(info.ram || '?')}</span></div>
+       <div>Source: <span style="color:var(--text-bright)">${escapeHtml(info.repo || '?')}</span></div>
+       <div style="margin-top:8px;color:var(--text-dim)">The download streams from Hugging Face into the models/ folder.</div>
+     </div>`,
+    'Download'
+  );
+  if (!ok) return;
+  downloadModelStream(filename, info.name || filename);
+}
+
+async function downloadModelStream(filename, friendly) {
+  showToast(`Downloading ${friendly}…`, 'info');
+  try {
+    const response = await fetch('/api/models/download', {
+      method: 'POST',
+      headers: authHeaders({'Content-Type': 'application/json'}),
+      body: JSON.stringify({filename, confirmed: true})
+    });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === 'done') {
+            showToast(`Downloaded ${friendly}`, 'success');
+            loadModels();
+          } else if (parsed.type === 'error') {
+            showToast(`Download failed: ${parsed.message}`, 'error');
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// Generic confirmation modal returning a Promise<boolean>.
+function openConfirmModal(title, htmlBody, confirmLabel) {
+  return new Promise(resolve => {
+    let overlay = document.getElementById('confirmModal');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'confirmModal';
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal-box">
+          <div class="modal-title" id="confirmModalTitle"></div>
+          <div class="modal-body" id="confirmModalBody"></div>
+          <div class="modal-actions">
+            <button class="action-btn" id="confirmModalCancel">Cancel</button>
+            <button class="action-btn primary" id="confirmModalOk"></button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+    document.getElementById('confirmModalTitle').textContent = title;
+    document.getElementById('confirmModalBody').innerHTML = htmlBody;
+    document.getElementById('confirmModalOk').textContent = confirmLabel || 'OK';
+
+    const close = (val) => {
+      overlay.classList.remove('open');
+      document.getElementById('confirmModalOk').onclick = null;
+      document.getElementById('confirmModalCancel').onclick = null;
+      resolve(val);
+    };
+    document.getElementById('confirmModalOk').onclick = () => close(true);
+    document.getElementById('confirmModalCancel').onclick = () => close(false);
+    overlay.classList.add('open');
+  });
 }
 
 // ============ MEMORY / SETTINGS ============
@@ -1362,7 +1569,7 @@ async function setMemory() {
   try {
     await fetch('/api/memory', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: authHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({action: 'set', key, value})
     });
     document.getElementById('memKey').value = '';
@@ -1378,7 +1585,7 @@ async function addInstruction() {
   try {
     await fetch('/api/memory', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: authHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({action: 'remember', instruction: text})
     });
     document.getElementById('memInstruction').value = '';
@@ -1392,7 +1599,7 @@ async function clearMemory() {
   try {
     await fetch('/api/memory', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: authHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({action: 'clear'})
     });
     loadMemory();
@@ -1404,7 +1611,7 @@ async function clearHistory() {
   try {
     await fetch('/api/clear_history', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: authHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({session_id: sessionId})
     });
     showToast('Chat history cleared', 'success');

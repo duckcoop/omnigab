@@ -1,5 +1,5 @@
 """
-RAG Agent Configuration
+OmniAgent Configuration
 =======================
 Central config for all pipeline components. Edit these values to swap models,
 adjust chunk sizes, or tune retrieval parameters.

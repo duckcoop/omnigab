@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-title Local RAG Agent - Model Downloader
+title OmniAgent - Model Downloader
 cd /d "%~dp0"
 
 set "MODELS_DIR=%~dp0models"
@@ -8,7 +8,7 @@ set "CONFIG=%~dp0src\config.py"
 if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
 
 echo.
-echo  Local RAG Agent - Model Downloader
+echo  OmniAgent - Model Downloader
 echo  ===================================
 echo.
 echo  Available models:

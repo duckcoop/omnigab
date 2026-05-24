@@ -5,8 +5,17 @@ models/*.gguf
 vectorstore/
 user_memory.json
 data/model_state.json
+data/*.sqlite3
+data/memory.db
+data/playwright_profile/
+data/indeed_runs/
+data/usajobs_runs/
+data/docs/active_resume.*
+data/docs/*resume*
 job_results.pdf
+logs/
 logs/*.log
+logs/audit.json
 __pycache__/
 *.pyc
 

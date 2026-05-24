@@ -1,0 +1,11 @@
+{
+  "name": "compare_two_documents",
+  "description": "Compare two retrieved documents or sets of chunks, highlighting similarities, differences, conflicts, and gaps.",
+  "triggers": ["compare", "difference", "differences", "versus", "vs\\b", "contrast", "conflict"],
+  "system_prompt": "Compare the retrieved document content. Identify overlap, differences, contradictions, and practical implications.",
+  "network_allowlist": [],
+  "requires_generator": true,
+  "requires_retrieval": true,
+  "version": "1.0.0",
+  "enabled": true
+}

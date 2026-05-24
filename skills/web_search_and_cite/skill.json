@@ -1,0 +1,11 @@
+{
+  "name": "web_search_and_cite",
+  "description": "Search the web for current information, answer with cited web sources, and keep citations attached to claims.",
+  "triggers": ["web search", "search the web", "current", "latest", "cite", "sources", "online"],
+  "system_prompt": "Use web search results to answer with citations. Prefer concise answers and include source URLs.",
+  "network_allowlist": ["duckduckgo.com", "ddg.gg", "html.duckduckgo.com", "lite.duckduckgo.com"],
+  "requires_generator": true,
+  "requires_retrieval": false,
+  "version": "1.0.0",
+  "enabled": true
+}

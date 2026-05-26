@@ -21,16 +21,41 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = PROJECT_ROOT / "data" / "memory.db"
+DB_PATH = PROJECT_ROOT / "data" / "storage.db"
+# Legacy path from earlier versions. If storage.db doesn't exist but
+# memory.db does, we rename it in place on first access so existing users
+# keep all their saved facts under the new name.
+LEGACY_DB_PATH = PROJECT_ROOT / "data" / "memory.db"
 
 
+def _migrate_legacy_db():
+    """One-shot rename: data/memory.db → data/storage.db if applicable."""
+    if DB_PATH.exists():
+        return
+    if LEGACY_DB_PATH.exists():
+        try:
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            LEGACY_DB_PATH.rename(DB_PATH)
+            print(f"[persistent_memory] migrated {LEGACY_DB_PATH.name} → {DB_PATH.name}")
+        except OSError as exc:
+            print(f"[persistent_memory] could not migrate legacy DB: {exc}")
+
+
+# Expanded category enum:
+#   preference          — UI/behavior preferences ("I prefer remote work")
+#   fact                — atomic facts ("my name is Cooper")
+#   instruction         — custom rules ("always show certs first")
+#   context             — session/topical context
+#   goal                — career/project goals ("target GS-09 by EOY")
+#   certification       — held certs cached structurally
+#   application_history — applied-to jobs (url, date, status)
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS facts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    category    TEXT NOT NULL,        -- 'preference' | 'fact' | 'instruction' | 'context'
+    category    TEXT NOT NULL,
     key         TEXT NOT NULL,
     value       TEXT NOT NULL,
-    source      TEXT,                  -- which session/turn or 'user'/'agent'
+    source      TEXT,
     created_at  REAL NOT NULL,
     updated_at  REAL NOT NULL
 );
@@ -43,7 +68,23 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_seen_at REAL NOT NULL,
     summary      TEXT
 );
+
+CREATE TABLE IF NOT EXISTS application_history (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_url       TEXT NOT NULL UNIQUE,
+    job_title     TEXT,
+    agency        TEXT,
+    match_percent INTEGER,
+    status        TEXT,                 -- 'flagged' | 'drafted' | 'applied' | 'rejected'
+    applied_at    REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_history_status ON application_history(status);
 """
+
+KNOWN_CATEGORIES = (
+    "preference", "fact", "instruction", "context",
+    "goal", "certification", "application_history",
+)
 
 
 class PersistentMemory:
@@ -53,6 +94,10 @@ class PersistentMemory:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        # Migrate the legacy memory.db if present (no-op if storage.db
+        # already exists or legacy was already migrated).
+        if db_path == DB_PATH:
+            _migrate_legacy_db()
         with self._conn() as conn:
             conn.executescript(_SCHEMA)
 
@@ -146,8 +191,33 @@ class PersistentMemory:
     def all_rows(self) -> list[dict]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT category,key,value,source,updated_at FROM facts "
+                "SELECT id,category,key,value,source,updated_at FROM facts "
                 "ORDER BY category, updated_at DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    # ---------- application history ----------------------------------
+
+    def record_application(self, *, job_url: str, job_title: str,
+                           agency: str, match_percent: int | None,
+                           status: str = "flagged") -> int:
+        now = time.time()
+        with self._conn() as conn:
+            cur = conn.execute(
+                "INSERT INTO application_history(job_url,job_title,agency,"
+                "match_percent,status,applied_at) VALUES (?,?,?,?,?,?) "
+                "ON CONFLICT(job_url) DO UPDATE SET "
+                "match_percent=excluded.match_percent, status=excluded.status",
+                (job_url, job_title, agency, match_percent, status, now),
+            )
+            return int(cur.lastrowid or 0)
+
+    def recent_applications(self, limit: int = 25) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id,job_url,job_title,agency,match_percent,status,applied_at "
+                "FROM application_history ORDER BY applied_at DESC LIMIT ?",
+                (limit,),
             ).fetchall()
             return [dict(r) for r in rows]
 
@@ -172,12 +242,14 @@ class PersistentMemory:
             sections.setdefault(r["category"], []).append(f"  {r['key']}: {r['value']}")
 
         out = ["Known about the user (persistent memory):"]
-        for cat in ("preference", "fact", "instruction", "context"):
+        ordered = ("certification", "goal", "preference", "fact",
+                   "instruction", "context", "application_history")
+        for cat in ordered:
             if cat in sections:
                 out.append(f"[{cat}]")
                 out.extend(sections[cat])
         for cat, lines in sections.items():
-            if cat not in ("preference", "fact", "instruction", "context"):
+            if cat not in ordered:
                 out.append(f"[{cat}]")
                 out.extend(lines)
         return "\n".join(out)

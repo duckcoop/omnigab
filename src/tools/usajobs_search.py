@@ -901,6 +901,19 @@ class UsaJobsSearchTool:
                 matched = cert_matches(user_certs, text_blob)
                 if matched:
                     job["cert_matches"] = matched
+
+            # JOB-side cert + clearance extraction (independent of user).
+            # The model uses these to explain "this posting requires X"
+            # even when the user doesn't currently hold X.
+            from tools.resume_intel import (
+                extract_required_certs, extract_clearance,
+            )
+            required = extract_required_certs(text_blob)
+            if required:
+                job["required_certs"] = required
+            clr = extract_clearance(text_blob)
+            if clr:
+                job["clearance_required"] = clr
         _log(f"[stage C] DONE eval in {time.monotonic() - t_eval:.2f}s")
 
         # AI-designated tag.
@@ -946,11 +959,13 @@ class UsaJobsSearchTool:
                 "grade": j.get("grade", ""),
                 "series_code": j.get("series_code", ""),
                 "status": j.get("status", "unknown"),
-                # Keep a SHORT summary so the model has something to base
-                # "Why this fits" on, but not the full 8 KB description.
                 "summary": (j.get("summary") or j.get("description", ""))[:280],
                 "match_percent": j.get("match_percent"),
                 "cert_matches": j.get("cert_matches"),
+                # Job-side fields: what the posting REQUIRES, independent
+                # of what the user has. Model uses these to highlight gaps.
+                "required_certs": j.get("required_certs"),
+                "clearance_required": j.get("clearance_required"),
                 "ai_designated": j.get("ai_designated"),
                 "url": j.get("url", ""),
             })

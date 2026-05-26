@@ -121,3 +121,68 @@ def cert_matches(resume_certs: list[str], job_text: str) -> list[str]:
         if any(p.search(job_text) for p in patterns):
             out.append(name)
     return out
+
+
+# Security-clearance levels recognized in federal job postings. Ordered
+# from least to most restrictive — when multiple appear, the highest wins.
+CLEARANCE_PATTERNS: list[tuple[str, list[str]]] = [
+    ("None / Public Trust", [
+        r"\bpublic\s+trust\b",
+        r"\bno\s+(security\s+)?clearance\b",
+        r"\bclearance\s+not\s+required\b",
+    ]),
+    ("Confidential", [r"\bconfidential\s+clearance\b"]),
+    ("Secret", [
+        r"\b(?:active\s+)?secret\s+clearance\b",
+        r"\bsecret\s+security\s+clearance\b",
+        r"\bDoD\s+Secret\b",
+    ]),
+    ("Top Secret", [
+        r"\b(?:active\s+)?top\s+secret\s+clearance\b",
+        r"\btop\s+secret\s+security\s+clearance\b",
+        r"\bDoD\s+Top\s+Secret\b",
+    ]),
+    ("TS/SCI", [
+        r"\bTS[-\s/]?SCI\b",
+        r"\btop\s+secret[/ ]+SCI\b",
+        r"\bTS\s+with\s+SCI\b",
+        r"\bSCI\s+eligibility\b",
+    ]),
+    ("Polygraph (CI)", [
+        r"\bCI\s+poly(graph)?\b",
+        r"\bcounter[\s-]?intelligence\s+poly\b",
+    ]),
+    ("Polygraph (FS)", [
+        r"\bFS\s+poly(graph)?\b",
+        r"\bfull[\s-]?scope\s+poly\b",
+        r"\blifestyle\s+poly\b",
+    ]),
+]
+
+_COMPILED_CLEARANCE = [
+    (name, [re.compile(p, re.IGNORECASE) for p in patterns])
+    for name, patterns in CLEARANCE_PATTERNS
+]
+
+
+def extract_clearance(job_text: str) -> str | None:
+    """Return the highest clearance level mentioned in the job text, or None.
+
+    Ordering matches CLEARANCE_PATTERNS (last match wins → highest level).
+    """
+    if not job_text:
+        return None
+    found = None
+    for name, patterns in _COMPILED_CLEARANCE:
+        if any(p.search(job_text) for p in patterns):
+            found = name   # later iterations override → highest survives
+    return found
+
+
+def extract_required_certs(job_text: str) -> list[str]:
+    """Return the canonical list of certs mentioned in the job text.
+
+    Same extractor as `extract_certs`, but semantically the result here is
+    'what the posting requires/desires' rather than 'what the user holds'.
+    """
+    return extract_certs(job_text)

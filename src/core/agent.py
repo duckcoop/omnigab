@@ -80,6 +80,21 @@ write the final prose answer to the user.
     → call `memory_write` OR `persistent_memory action=remember`.
 - User refers to something they told you before, or asks "what do you know about me":
     → call `memory_read` or `persistent_memory action=search`.
+- User mentions a CVE id (CVE-YYYY-NNNN), asks about a vulnerability,
+  whether something is "actively exploited", or asks about the CISA KEV catalog:
+    → call `cve_lookup`. Actions: 'cve' for NVD lookup, 'kev_search' for
+    vendor/product, 'kev_recent' for last N days, 'is_in_kev' for quick membership.
+- User asks for arithmetic, JSON/CSV manipulation, regex testing, hash
+  computation, statistics, or any precise calculation that you should NOT
+  guess at:
+    → call `python_eval` with a short snippet using print() for output.
+    Sandbox is isolated and disposable — fine to use freely for computation,
+    but DON'T use it for tasks the user wants persisted (memory_write for that).
+- After a `usajobs_search` returns a result with `match_percent >= 85`:
+    → proactively offer to draft a tailored federal resume for that posting.
+    If the user says yes (or says "draft it", "make me a resume", etc.),
+    call `draft_federal_resume` with the job's `url` from the search result.
+    The tool returns a draft path under data/resume_drafts/.
 - User states a STABLE preference or fact in passing (e.g. "I prefer remote-only
   jobs", "I'm a junior at UMD majoring in CS", "my certs are Sec+ and A+",
   "I'm targeting Maryland and DC"): proactively call

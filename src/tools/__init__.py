@@ -28,6 +28,9 @@ def build_default_toolset(*, embedder, store, web_search, memory,
     from tools.indeed_apply import IndeedApplyTool
     from tools.usajobs_search import UsaJobsSearchTool
     from tools.open_in_browser import OpenInBrowserTool
+    from tools.cve_lookup import CveLookupTool
+    from tools.python_eval import PythonEvalTool
+    from tools.resume_drafter import ResumeDrafterTool
     from tools.skill_adapter import adapt_skill
 
     tools: dict[str, Tool] = {}
@@ -58,6 +61,22 @@ def build_default_toolset(*, embedder, store, web_search, memory,
 
     # Cloudflare-proof fallback: opens URLs in the user's real browser.
     tools["open_in_browser"] = OpenInBrowserTool()
+
+    # NIST NVD + CISA KEV cyber-intelligence tool.
+    cve = CveLookupTool()
+    tools[cve.name] = cve
+
+    # Sandboxed Python execution (math, parsing, deterministic compute).
+    pyeval = PythonEvalTool()
+    tools[pyeval.name] = pyeval
+
+    # Federal-resume drafter — uses live model + active resume + memory.
+    drafter = ResumeDrafterTool(
+        generator_getter=generator_getter,
+        persistent_memory=persistent_memory,
+        resume_text_getter=_indeed_helper._load_resume,
+    )
+    tools[drafter.name] = drafter
 
     if persistent_memory is not None:
         from tools.persistent_memory_tool import PersistentMemoryTool

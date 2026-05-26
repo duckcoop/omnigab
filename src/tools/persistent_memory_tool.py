@@ -22,8 +22,14 @@ class PersistentMemoryTool:
             },
             "category": {
                 "type": "string",
-                "enum": ["preference", "fact", "instruction", "context"],
-                "description": "Type of memory. Default: fact.",
+                "enum": ["preference", "fact", "instruction", "context",
+                         "goal", "certification", "application_history"],
+                "description": (
+                    "Type of memory. Default: fact. Use 'goal' for career "
+                    "objectives ('GS-09 by EOY'), 'certification' for held "
+                    "credentials ('Security+ valid through 2027'), "
+                    "'application_history' for past job applications."
+                ),
             },
             "key": {"type": "string"},
             "value": {"type": "string"},

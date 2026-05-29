@@ -1027,6 +1027,12 @@ class RAGApp(tk.Tk):
             })
             if r.get("status") == "ok":
                 msg = f"Loaded: {r.get('original_filename', filename)} ({r.get('size', len(data))} bytes)"
+                drafter = r.get("drafter_baseresume") or {}
+                if drafter.get("updated"):
+                    msg += f"  •  drafter base updated ({drafter.get('chars', 0)} chars)"
+                elif drafter.get("error"):
+                    # Upload succeeded but extract failed (e.g. image-only PDF).
+                    msg += f"  •  drafter extract failed: {drafter['error']}"
                 self.after(0, lambda: self.resume_status_label.configure(text=msg, fg=GREEN))
                 self.after(0, self._refresh_resume_status)
             else:

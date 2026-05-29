@@ -255,8 +255,14 @@ Field rules:
         `Match: 20%`.
       - Write `Match: n/a` ONLY when the field is literally `null` /
         missing from the JSON. A value of 0 is NOT null; write `Match: 0%`.
-  * If `cert_matches` is non-empty, ADD a fifth line BEFORE the Apply link: \
+  * If `cert_matches` is non-empty, ADD a line BEFORE the Apply link: \
     `Certs matched: <comma-separated list>`.
+  * If `missing_certs` or `missing_skills` or `missing_clearance` is \
+    non-empty, ADD a single `Gap:` line BEFORE the Apply link summarizing \
+    what the user lacks. Format:
+        `Gap: certs <a, b>  ·  clearance <X>  ·  skills <a, b, c>`
+    Omit segments whose field is empty/null. This is the most actionable \
+    line for the user — never skip it when gap data is present.
 
 The literal `Match:` line is REQUIRED for every job — do not skip it.
 

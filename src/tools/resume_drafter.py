@@ -34,6 +34,10 @@ from bs4 import BeautifulSoup
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DRAFT_DIR = PROJECT_ROOT / "data" / "resume_drafts"
 DATA_DOCS = PROJECT_ROOT / "data" / "docs"
+# Canonical "base resume" path. Plain text so it's easy for the user to
+# edit. Loaded with absolute priority over the data/docs/active_resume.*
+# fallback so the drafter has one obvious place to update master truth.
+BASE_RESUME_TXT = PROJECT_ROOT / "baseresume.txt"
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -43,11 +47,39 @@ USER_AGENT = (
 
 
 _DRAFTER_SYSTEM_PROMPT = """You are a federal-resume drafter. You will be given:
-  1. The user's base resume text.
+  1. The user's BASE resume (master truth — never invent past it).
   2. A target federal job posting (title, agency, duties, qualifications).
   3. The user's saved profile facts (certs, goals, preferences).
 
-Produce a tailored federal-style resume draft in this EXACT structure:
+## Step 1 — Keyword extraction (REQUIRED, do this silently in a
+##           <thinking> block before writing the resume)
+Read the posting's Duties + Qualifications sections. Extract the top 8-12
+KEYWORD PHRASES that federal HR keyword-screeners will look for. Each
+phrase should be a concrete noun-or-verb-phrase from the posting itself
+(NOT a paraphrase). Examples of good keywords:
+  * "incident response"
+  * "Risk Management Framework (RMF)"
+  * "Active Directory user provisioning"
+  * "Python automation"
+  * "Authority to Operate (ATO) packages"
+Examples of bad keywords (too generic):
+  * "communication skills"
+  * "team player"
+  * "technology"
+
+## Step 2 — Bullet rewriting
+For EACH work-experience bullet in the user's base resume:
+  * Identify which keyword(s) from Step 1 naturally relate to that bullet's
+    real content.
+  * Rewrite the bullet so the keyword appears in plain English — without
+    adding any factual claim the base resume didn't already support.
+  * If a bullet doesn't map to any keyword, keep it but tighten the wording.
+  * If a Step-1 keyword has NO matching bullet in the base resume, do NOT
+    fabricate one. Instead, surface the gap in the Federal-Specific Addenda
+    section as "Areas of demonstrable coursework / project work" with
+    references the user can fill in.
+
+## Output structure (in this order):
 
 # Professional Summary
 2-3 sentences positioning the user for THIS role. Mirror keywords from
@@ -81,24 +113,30 @@ the user doesn't have — never claim credentials you weren't told they hold).
   paragraph supports that claim.
 - Veterans' preference: only if base resume mentions it.
 
-Rules:
-- NEVER invent experience, dates, or credentials.
+Hard rules:
+- NEVER invent experience, dates, employers, or credentials.
+- Every rewritten bullet must still be a TRUE statement supported by the
+  base resume — keyword incorporation must be natural, not bolted on.
 - When the posting requires X and the user has Y instead, write a bridge
-  sentence explaining the substitution (e.g. coursework, projects, certs).
-- Output ONLY the resume markdown — no preamble, no "here is your draft".
-- Length target: 600-900 words."""
+  sentence in the addenda section (coursework, projects, certs, transfer
+  of related skill) — do NOT claim experience the user doesn't have.
+- Output the resume markdown directly after closing the </thinking> block.
+  No "here is your draft" preamble.
+- Length target: 600-1000 words AFTER the thinking block."""
 
 
 class ResumeDrafterTool:
     name = "draft_federal_resume"
     description = (
         "Generate a tailored federal-style resume draft for a specific "
-        "USAJOBS posting. Provide either `job_url` (we'll fetch + parse) "
-        "OR `job_description` text directly. Uses the user's active "
-        "resume from data/docs/ plus persistent_memory profile facts. "
-        "Output is written to data/resume_drafts/ as both .md and .json. "
-        "Auto-trigger heuristic: call when a usajobs_search result has "
-        "match_percent >= 85 (the agent should decide based on results)."
+        "USAJOBS posting. Reads the user's master resume from baseresume.txt "
+        "in the project root (falls back to data/docs/active_resume.* if "
+        "absent), extracts 8-12 keyword phrases from the posting, then "
+        "rewrites work-experience bullets to incorporate those keywords "
+        "without inventing claims. Provide either `job_url` (auto-fetched) "
+        "OR `job_description` text. Output is written to data/resume_drafts/ "
+        "as both .md and .json. Auto-trigger heuristic: call when a "
+        "usajobs_search result has match_percent >= 85."
     )
     input_schema = {
         "type": "object",
@@ -115,17 +153,46 @@ class ResumeDrafterTool:
         "required": [],
     }
 
+    # The 14B is great for the chat agent but too slow for the large
+    # generation a resume draft requires (~400+s observed). The 7B at
+    # Q4 cuts that to ~80-120s with comparable quality on this template
+    # task. We hot-swap to it for the draft, then swap back.
+    PREFERRED_MODEL = "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+
     def __init__(self, *, generator_getter, persistent_memory=None,
-                 resume_text_getter=None):
+                 resume_text_getter=None, model_manager=None):
         """
         generator_getter:    callable -> live Generator (so the drafter
                              always uses the current model after hot-swap).
         persistent_memory:   PersistentMemory instance for profile facts.
         resume_text_getter:  callable -> active resume text (from IndeedApplyTool).
+        model_manager:       optional ModelManager. When provided, the drafter
+                             will hot-swap to PREFERRED_MODEL (7B) for the
+                             generation and swap the original model back
+                             afterwards. Without it, uses whatever is loaded.
         """
         self._gen_getter = generator_getter
         self._pm = persistent_memory
         self._resume_getter = resume_text_getter
+        self._mm = model_manager
+
+    def _try_swap_to(self, model_filename: str) -> bool:
+        """Hot-swap the ModelManager to `model_filename`. Auto-download via
+        ensure_model_downloaded if not on disk. Returns True if the swap
+        succeeded (mm.current_model_name now equals filename).
+        """
+        if self._mm is None:
+            return False
+        try:
+            from core.model_manager import ensure_model_downloaded
+            if not ensure_model_downloaded(model_filename):
+                print(f"[drafter] {model_filename} not on disk and download failed")
+                return False
+            self._mm.load(model_filename)
+            return self._mm.current_model_name == model_filename
+        except Exception as exc:
+            print(f"[drafter] hot-swap to {model_filename} failed: {exc!r}")
+            return False
 
     # ----- entry -----
 
@@ -134,6 +201,13 @@ class ResumeDrafterTool:
         job_desc = (arguments.get("job_description") or "").strip()
         job_title = (arguments.get("job_title") or "").strip()
         agency = (arguments.get("agency") or "").strip()
+
+        # 0. Auto-ingest: if user updated baseresume.pdf/.docx, refresh .txt.
+        try:
+            from resume_ingest import ingest_resume
+            ingest_resume()
+        except Exception:
+            pass  # ingest is best-effort; .txt may already exist
 
         # 1. Resolve the job description.
         if not job_desc and job_url:
@@ -151,24 +225,55 @@ class ResumeDrafterTool:
         resume = self._load_user_resume()
         if not resume:
             return {"ok": False,
-                    "error": ("no active resume found. Upload one via the "
-                              "Jobs tab (Choose file…) before drafting.")}
+                    "error": ("no active resume found. Drop baseresume.pdf "
+                              "or baseresume.docx in the project root, or "
+                              "upload one via the Jobs tab.")}
 
         # 3. Gather profile facts from persistent memory.
         profile = self._profile_snapshot()
 
-        # 4. Generate the draft via the local model.
-        gen = self._gen_getter() if self._gen_getter else None
-        if gen is None:
-            return {"ok": False, "error": "no model loaded"}
-
+        # 4. Generate the draft. Hot-swap to the 7B if a ModelManager was
+        # provided and the 7B is available — speeds drafts ~3-4× over 14B.
         prompt = self._build_prompt(resume, job_desc, profile)
         t0 = time.monotonic()
+        original_model = None
+        swap_note = ""
         try:
-            draft_md = gen.generate_raw(prompt, max_tokens=1800,
-                                         temperature=0.25)
+            if self._mm is not None:
+                original_model = self._mm.current_model_name
+                if original_model != self.PREFERRED_MODEL:
+                    swapped = self._try_swap_to(self.PREFERRED_MODEL)
+                    if swapped:
+                        swap_note = (f"hot-swapped {original_model} → "
+                                     f"{self.PREFERRED_MODEL} for drafting")
+                    else:
+                        swap_note = (f"7B unavailable, drafting with "
+                                     f"{original_model}")
+            gen = self._gen_getter() if self._gen_getter else None
+            if gen is None:
+                return {"ok": False, "error": "no model loaded"}
+            # 7B handles this task with a lower temperature than the 14B
+            # (less drift in the keyword incorporation step).
+            draft_md = gen.generate_raw(prompt, max_tokens=1500,
+                                         temperature=0.18)
         except Exception as exc:
+            # Swap back even on failure.
+            if original_model and self._mm is not None:
+                if self._mm.current_model_name != original_model:
+                    try:
+                        self._mm.load(original_model)
+                    except Exception:
+                        pass
             return {"ok": False, "error": f"generation failed: {exc!r}"}
+        finally:
+            # Always restore the user's chat model so the agent isn't
+            # accidentally left on the smaller 7B after a draft.
+            if original_model and self._mm is not None:
+                if self._mm.current_model_name != original_model:
+                    try:
+                        self._mm.load(original_model)
+                    except Exception as exc:
+                        print(f"[drafter] WARN: failed to restore {original_model}: {exc}")
         elapsed = time.monotonic() - t0
 
         # 5. Persist.
@@ -218,6 +323,9 @@ class ResumeDrafterTool:
             "draft_chars": len(draft_md),
             "generation_seconds": round(elapsed, 2),
             "draft_preview": draft_md[:600],
+            "model_used": (self._mm.current_model_name
+                            if self._mm else "(no manager)"),
+            "swap_note": swap_note,
         }
 
     # ----- helpers -----
@@ -239,6 +347,25 @@ class ResumeDrafterTool:
         )
 
     def _load_user_resume(self) -> str:
+        """Resolve the user's master resume text. Search order:
+
+          1. baseresume.txt in the project root — the canonical source.
+             Plain text, owner-edited, never auto-generated. Treated as
+             master truth.
+          2. The getter (typically IndeedApplyTool._load_resume) which
+             scans data/docs/active_resume.*.
+          3. Direct scan of data/docs/ for any *resume* file.
+        """
+        # 1) Canonical base file in the project root.
+        if BASE_RESUME_TXT.exists():
+            try:
+                txt = BASE_RESUME_TXT.read_text(encoding="utf-8", errors="ignore")
+                if txt.strip():
+                    return txt
+            except OSError:
+                pass
+
+        # 2) Configured getter (IndeedApplyTool's _load_resume, etc.).
         if self._resume_getter:
             try:
                 txt = self._resume_getter()
@@ -246,7 +373,8 @@ class ResumeDrafterTool:
                     return txt
             except Exception:
                 pass
-        # Fallback: scan data/docs/ for active_resume.* or any *resume*.
+
+        # 3) Last-resort scan of data/docs/.
         candidates = (sorted(DATA_DOCS.glob("active_resume.*"))
                        + sorted(DATA_DOCS.glob("*resume*")))
         for p in candidates:

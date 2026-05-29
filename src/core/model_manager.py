@@ -30,7 +30,7 @@ from config import (
 MODEL_PROFILE: dict[str, dict] = {
     "qwen2.5-1.5b-instruct-q4_k_m.gguf": {"weight_gb": 1.1, "ctx": 8192,  "batch": 512},
     "qwen2.5-3b-instruct-q4_k_m.gguf":   {"weight_gb": 2.1, "ctx": 8192,  "batch": 512},
-    "qwen2.5-7b-instruct-q4_k_m.gguf":   {"weight_gb": 4.4, "ctx": 8192,  "batch": 1024},
+    "Qwen2.5-7B-Instruct-Q4_K_M.gguf":   {"weight_gb": 4.4, "ctx": 8192,  "batch": 1024},
     # 14B at 8192 ctx with q8_0 KV cache (~1.5 GB) and 9 GB weights sits at
     # ~10.5 GB on a 12 GB card — comfortable headroom, lets us push batch
     # to 1024 for faster prompt processing.
@@ -126,7 +126,7 @@ def detect_ram_gb() -> int:
 # fits comfortably with a 1.5 GB safety margin.
 HARDWARE_TIERS = [
     {"min_vram_gb": 10, "model": "Qwen2.5-14B-Instruct-Q4_K_M.gguf"},
-    {"min_vram_gb": 6,  "model": "qwen2.5-7b-instruct-q4_k_m.gguf"},
+    {"min_vram_gb": 6,  "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf"},
     {"min_vram_gb": 4,  "model": "qwen2.5-3b-instruct-q4_k_m.gguf"},
     {"min_vram_gb": 0, "min_ram_gb": 16, "model": "qwen2.5-3b-instruct-q4_k_m.gguf"},
     {"min_vram_gb": 0, "min_ram_gb": 0,  "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf"},

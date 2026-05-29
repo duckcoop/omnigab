@@ -46,11 +46,15 @@ AVAILABLE_MODELS = {
         "ram": "~6 GB",
         "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
     },
-    "qwen2.5-7b-instruct-q4_k_m.gguf": {
+    # 7B uses bartowski's single-file quant. The official Qwen repo
+    # shards the 7B Q4_K_M into two pieces (gguf-split format), which
+    # hf_hub_download can't fetch with a plain filename. Bartowski's
+    # repo is the same source we already use for the 14B.
+    "Qwen2.5-7B-Instruct-Q4_K_M.gguf": {
         "name": "Qwen 2.5 7B (Great Quality)",
         "size": "~4.4 GB",
         "ram": "~10 GB",
-        "repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+        "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
     },
     "Qwen2.5-14B-Instruct-Q4_K_M.gguf": {
         "name": "Qwen 2.5 14B (Best Quality)",

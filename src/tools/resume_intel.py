@@ -186,3 +186,140 @@ def extract_required_certs(job_text: str) -> list[str]:
     'what the posting requires/desires' rather than 'what the user holds'.
     """
     return extract_certs(job_text)
+
+
+# Canonical tech/skill vocabulary for federal IT/cyber/AI roles. Each
+# entry is (canonical_label, [regex variants]). Matching is case-
+# insensitive and word-boundary aware so "Python" in "in Python 3.11"
+# matches but "Python" in "Pythonista" doesn't.
+TECH_SKILL_PATTERNS: list[tuple[str, list[str]]] = [
+    # Languages
+    ("Python", [r"\bpython\b"]),
+    ("Java", [r"\bjava\b(?!\s*script)"]),
+    ("JavaScript", [r"\bjavascript\b", r"\bjs\b"]),
+    ("TypeScript", [r"\btypescript\b"]),
+    ("C++", [r"\bc\+\+(?!\w)"]),
+    ("C#", [r"\bc#(?!\w)"]),
+    ("Go", [r"\bgolang\b"]),
+    ("Rust", [r"\brust\b(?!\s*belt)"]),
+    ("SQL", [r"\bsql\b"]),
+    ("Bash", [r"\bbash\b", r"\bshell\s+scripting\b"]),
+    ("PowerShell", [r"\bpowershell\b"]),
+    # Cloud
+    ("AWS", [r"\bAWS\b", r"\bamazon\s+web\s+services\b"]),
+    ("Azure", [r"\bazure\b"]),
+    ("GCP", [r"\bGCP\b", r"\bgoogle\s+cloud\b"]),
+    ("Kubernetes", [r"\bkubernetes\b", r"\bk8s\b"]),
+    ("Docker", [r"\bdocker\b"]),
+    ("Terraform", [r"\bterraform\b"]),
+    # OS / infra
+    ("Linux", [r"\blinux\b"]),
+    ("RHEL", [r"\bRHEL\b", r"\bred\s+hat\s+enterprise\s+linux\b"]),
+    ("Windows Server", [r"\bwindows\s+server\b"]),
+    ("Active Directory", [r"\bactive\s+directory\b", r"\bAD\b"]),
+    # Security tooling
+    ("SIEM", [r"\bSIEM\b"]),
+    ("Splunk", [r"\bsplunk\b"]),
+    ("Wireshark", [r"\bwireshark\b"]),
+    ("Nessus", [r"\bnessus\b"]),
+    ("Burp Suite", [r"\bburp\s+suite\b"]),
+    ("Metasploit", [r"\bmetasploit\b"]),
+    # Federal frameworks
+    ("NIST 800-53", [r"\bNIST\s+800[-\s]?53\b"]),
+    ("NIST 800-171", [r"\bNIST\s+800[-\s]?171\b"]),
+    ("FedRAMP", [r"\bfedramp\b"]),
+    ("FISMA", [r"\bFISMA\b"]),
+    ("RMF", [r"\bRMF\b", r"\brisk\s+management\s+framework\b"]),
+    ("ATO", [r"\bATO\b", r"\bauthority\s+to\s+operate\b"]),
+    # Networking
+    ("TCP/IP", [r"\bTCP/IP\b"]),
+    ("BGP", [r"\bBGP\b"]),
+    ("OSPF", [r"\bOSPF\b"]),
+    ("VPN", [r"\bVPN\b"]),
+    ("Firewall", [r"\bfirewall\b"]),
+    ("IDS/IPS", [r"\bIDS/IPS\b", r"\bintrusion\s+detection\b"]),
+    # AI / ML
+    ("TensorFlow", [r"\btensorflow\b"]),
+    ("PyTorch", [r"\bpytorch\b"]),
+    ("scikit-learn", [r"\bscikit[-\s]?learn\b", r"\bsklearn\b"]),
+    ("LLM", [r"\bLLMs?\b", r"\blarge\s+language\s+models?\b"]),
+    ("NLP", [r"\bNLP\b", r"\bnatural\s+language\s+processing\b"]),
+    ("Computer Vision", [r"\bcomputer\s+vision\b", r"\bCV\b"]),
+    ("Deep Learning", [r"\bdeep\s+learning\b"]),
+    ("MLOps", [r"\bMLOps\b"]),
+    # Workflow
+    ("Agile", [r"\bagile\b"]),
+    ("Scrum", [r"\bscrum\b"]),
+    ("CI/CD", [r"\bCI/CD\b", r"\bcontinuous\s+integration\b"]),
+    ("Git", [r"\bgit\b(?!hub)", r"\bgithub\b", r"\bgitlab\b"]),
+    ("ITIL", [r"\bITIL\b"]),
+]
+
+_COMPILED_SKILLS = [
+    (name, [re.compile(p, re.IGNORECASE) for p in patterns])
+    for name, patterns in TECH_SKILL_PATTERNS
+]
+
+
+def extract_tech_skills(text: str) -> list[str]:
+    """Return canonical tech skills mentioned in `text`. Deterministic
+    order matches TECH_SKILL_PATTERNS so output is stable.
+    """
+    if not text:
+        return []
+    found: list[str] = []
+    for name, patterns in _COMPILED_SKILLS:
+        if any(p.search(text) for p in patterns):
+            found.append(name)
+    return found
+
+
+def skills_gap(*, job_text: str, resume_text: str,
+                resume_certs: list[str] | None = None,
+                resume_clearance: str | None = None) -> dict:
+    """Compute the gap between what the posting wants and what the user has.
+
+    Returns a dict with:
+      missing_certs        — required by posting, not held by user
+      missing_skills       — tech skills in posting not in resume (top 6)
+      missing_clearance    — posting clearance level if user has none
+      matched_certs        — overlap (informational, mirrors cert_matches)
+      matched_skills       — overlap (informational)
+    """
+    resume_certs = resume_certs or []
+
+    # ----- certs -----
+    job_certs = set(extract_required_certs(job_text))
+    user_certs = set(resume_certs)
+    matched_certs = sorted(job_certs & user_certs, key=lambda c: c.lower())
+    missing_certs = sorted(job_certs - user_certs, key=lambda c: c.lower())
+
+    # ----- tech skills -----
+    job_skills = extract_tech_skills(job_text)
+    resume_skills = set(extract_tech_skills(resume_text))
+    matched_skills: list[str] = []
+    missing_skills: list[str] = []
+    for s in job_skills:   # preserves canonical order
+        if s in resume_skills:
+            matched_skills.append(s)
+        else:
+            missing_skills.append(s)
+    # Cap missing list so the agent's per-job line stays readable.
+    missing_skills = missing_skills[:6]
+
+    # ----- clearance -----
+    job_clearance = extract_clearance(job_text)
+    missing_clearance: str | None = None
+    if job_clearance and job_clearance not in ("None / Public Trust",):
+        user_has = bool(resume_clearance and resume_clearance not in
+                         ("None / Public Trust",))
+        if not user_has:
+            missing_clearance = job_clearance
+
+    return {
+        "missing_certs": missing_certs,
+        "missing_skills": missing_skills,
+        "missing_clearance": missing_clearance,
+        "matched_certs": matched_certs,
+        "matched_skills": matched_skills,
+    }

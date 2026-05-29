@@ -11,7 +11,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def build_default_toolset(*, embedder, store, web_search, memory,
                           generator_getter, skill_registry,
-                          persistent_memory=None) -> dict[str, Tool]:
+                          persistent_memory=None,
+                          model_manager=None) -> dict[str, Tool]:
     """Construct the full built-in tool catalog plus skill adapters.
 
     Pass `generator_getter` (a callable returning the current Generator)
@@ -71,10 +72,13 @@ def build_default_toolset(*, embedder, store, web_search, memory,
     tools[pyeval.name] = pyeval
 
     # Federal-resume drafter — uses live model + active resume + memory.
+    # Passing model_manager lets the drafter hot-swap to a 7B for the
+    # draft (~3-4× faster than the 14B) and swap back when done.
     drafter = ResumeDrafterTool(
         generator_getter=generator_getter,
         persistent_memory=persistent_memory,
         resume_text_getter=_indeed_helper._load_resume,
+        model_manager=model_manager,
     )
     tools[drafter.name] = drafter
 

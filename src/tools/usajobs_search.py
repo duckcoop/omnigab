@@ -903,10 +903,8 @@ class UsaJobsSearchTool:
                     job["cert_matches"] = matched
 
             # JOB-side cert + clearance extraction (independent of user).
-            # The model uses these to explain "this posting requires X"
-            # even when the user doesn't currently hold X.
             from tools.resume_intel import (
-                extract_required_certs, extract_clearance,
+                extract_required_certs, extract_clearance, skills_gap,
             )
             required = extract_required_certs(text_blob)
             if required:
@@ -914,6 +912,23 @@ class UsaJobsSearchTool:
             clr = extract_clearance(text_blob)
             if clr:
                 job["clearance_required"] = clr
+
+            # Skills gap analyzer: required - have.
+            # Only meaningful when we have the user's resume text + certs.
+            resume_text = self._cached_resume_text or ""
+            if resume_text or user_certs:
+                gap = skills_gap(
+                    job_text=text_blob,
+                    resume_text=resume_text,
+                    resume_certs=user_certs,
+                )
+                # Drop empty fields so the model isn't distracted.
+                if gap["missing_certs"]:
+                    job["missing_certs"] = gap["missing_certs"]
+                if gap["missing_skills"]:
+                    job["missing_skills"] = gap["missing_skills"]
+                if gap["missing_clearance"]:
+                    job["missing_clearance"] = gap["missing_clearance"]
         _log(f"[stage C] DONE eval in {time.monotonic() - t_eval:.2f}s")
 
         # AI-designated tag.
@@ -966,6 +981,10 @@ class UsaJobsSearchTool:
                 # of what the user has. Model uses these to highlight gaps.
                 "required_certs": j.get("required_certs"),
                 "clearance_required": j.get("clearance_required"),
+                # Skills-gap analyzer output (what user is missing).
+                "missing_certs": j.get("missing_certs"),
+                "missing_skills": j.get("missing_skills"),
+                "missing_clearance": j.get("missing_clearance"),
                 "ai_designated": j.get("ai_designated"),
                 "url": j.get("url", ""),
             })

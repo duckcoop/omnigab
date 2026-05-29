@@ -101,6 +101,12 @@ def run_once(*, queries: list[str], location: str, max_jobs: int,
                 "required_certs": job.get("required_certs"),
                 "clearance_required": job.get("clearance_required"),
                 "cert_matches": job.get("cert_matches"),
+                # Skills-gap analyzer output — what the user is missing.
+                # Logged so the user can decide whether the gap is worth
+                # closing (study for a cert, request clearance, etc.).
+                "missing_certs": job.get("missing_certs"),
+                "missing_skills": job.get("missing_skills"),
+                "missing_clearance": job.get("missing_clearance"),
                 "url": url,
                 "query": q,
             }
@@ -124,6 +130,15 @@ def run_once(*, queries: list[str], location: str, max_jobs: int,
             new_alerts += 1
             _log(f"  ALERT [{entry['priority']}]  {pct}%  "
                  f"{job.get('title','?')[:55]}  ({job.get('agency','?')[:30]})")
+            gap_bits: list[str] = []
+            if entry["missing_certs"]:
+                gap_bits.append(f"certs: {', '.join(entry['missing_certs'])}")
+            if entry["missing_clearance"]:
+                gap_bits.append(f"clearance: {entry['missing_clearance']}")
+            if entry["missing_skills"]:
+                gap_bits.append(f"skills: {', '.join(entry['missing_skills'][:4])}")
+            if gap_bits:
+                _log(f"    gap → {'  |  '.join(gap_bits)}")
     return new_alerts
 
 

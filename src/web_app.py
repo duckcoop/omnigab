@@ -156,6 +156,7 @@ def _rebuild_toolset() -> None:
         generator_getter=lambda: mm.generator if mm else None,
         skill_registry=reg,
         persistent_memory=persistent_memory,
+        model_manager=mm,
     )
     agent.tools = tools
 
@@ -224,6 +225,7 @@ def startup():
         generator_getter=lambda: mm.generator if mm else None,
         skill_registry=reg,
         persistent_memory=persistent_memory,
+        model_manager=mm,
     )
     agent = Agent(model_manager=mm, tools=tools, memory=memory,
                   persistent_memory=persistent_memory)
@@ -807,13 +809,33 @@ async def api_resume_upload(request: Request):
 
     target = DOCS_DIR / f"active_resume{suffix}"
     target.write_bytes(data)
+
+    # ALSO extract straight into the project-root `baseresume.txt` so the
+    # federal resume drafter (which reads that file) picks up the upload
+    # immediately — saves the user from having to drop the file into the
+    # project folder and re-run any ingest step.
+    drafter_status: dict = {"updated": False}
+    try:
+        from resume_ingest import ingest_from_path
+        r = ingest_from_path(target)
+        drafter_status = {
+            "updated": r.ok,
+            "chars": r.chars_written,
+            "action": r.action,
+            "error": r.error,
+        }
+    except Exception as exc:   # never fail the upload over the extract
+        drafter_status = {"updated": False, "error": str(exc)}
+
     audit_log("resume.upload", status="ok", input_summary=raw_filename,
-              detail={"bytes": len(data), "ext": suffix})
+              detail={"bytes": len(data), "ext": suffix,
+                      "drafter": drafter_status})
     return JSONResponse({
         "status": "ok",
         "filename": target.name,
         "original_filename": raw_filename,
         "size": len(data),
+        "drafter_baseresume": drafter_status,
     })
 
 
@@ -826,6 +848,17 @@ async def api_resume_clear():
             removed.append(old.name)
         except OSError:
             pass
+
+    # Also wipe the drafter base file so /api/resume gives one consistent
+    # answer about whether a resume is loaded.
+    try:
+        from resume_ingest import BASE_RESUME_TXT
+        if BASE_RESUME_TXT.exists():
+            BASE_RESUME_TXT.unlink()
+            removed.append(BASE_RESUME_TXT.name)
+    except Exception:
+        pass
+
     audit_log("resume.clear", status="ok", detail={"removed": removed})
     return JSONResponse({"status": "ok", "removed": removed})
 

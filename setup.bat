@@ -10,13 +10,31 @@ echo  =============================================
 echo.
 
 :: -----------------------------------------------
-:: 1. Find Python
+:: 1. Find a REAL Python (skip the Microsoft Store alias stub)
 :: -----------------------------------------------
+:: The bare "python" command on Windows is often a Microsoft Store
+:: placeholder that isn't real Python - running it just prints
+:: "Python was not found... Microsoft Store" and exits. The old
+:: detection grabbed that stub via "where python", so the version
+:: check below failed even when real Python 3.12 was installed.
+:: We now validate every candidate by actually running it, and we
+:: prefer the py launcher, which never resolves to the stub.
 set "PYTHON="
-where python >nul 2>&1 && set "PYTHON=python" && goto :found_python
-where python3 >nul 2>&1 && set "PYTHON=python3" && goto :found_python
-where py >nul 2>&1 && set "PYTHON=py" && goto :found_python
 
+:: Prefer the py launcher with an explicit version (ignores the stub).
+for %%V in (3.12 3.11 3.10 3.13 3) do (
+    py -%%V -c "import sys" >nul 2>&1 && ( set "PYTHON=py -%%V" & goto :found_python )
+)
+
+:: Fall back to python / python3 on PATH, but only if they really run.
+:: The Store stub prints no version, so it never passes this probe.
+for %%P in (python python3) do (
+    for /f "delims=" %%R in ('%%P -c "import sys; sys.stdout.write(str(sys.version_info[0]))" 2^>nul') do (
+        if "%%R"=="3" ( set "PYTHON=%%P" & goto :found_python )
+    )
+)
+
+:: Fall back to common install locations.
 for /d %%D in ("C:\Users\%USERNAME%\AppData\Local\Python\pythoncore-3.*") do (
     if exist "%%D\python.exe" ( set "PYTHON=%%D\python.exe" & goto :found_python )
 )
@@ -27,49 +45,37 @@ for /d %%D in ("C:\Python3*") do (
     if exist "%%D\python.exe" ( set "PYTHON=%%D\python.exe" & goto :found_python )
 )
 
-echo [ERROR] Python not found. Install Python 3.10-3.12 from https://www.python.org
+echo [ERROR] No real Python found on this machine.
+echo         Install Python 3.12 from https://www.python.org/downloads/release/python-3128/
+echo         and check "Add python.exe to PATH" during install, then rerun setup.bat.
+echo.
+echo         Tip: if typing "python" opens the Microsoft Store, turn off the alias at
+echo         Settings ^> Apps ^> Advanced app settings ^> App execution aliases.
 pause
 exit /b 1
 
 :found_python
 echo [OK] Found Python: %PYTHON%
-
 %PYTHON% --version
 
 :: -----------------------------------------------
-:: Strict Python 3.12 enforcement
+:: 2. Check Python version (warn, don't block)
 :: -----------------------------------------------
-:: Prebuilt CUDA wheels for llama-cpp-python (and many ML deps) target
-:: Python 3.10-3.12. Newer Python = no wheel = silent CPU fallback or
-:: source-build failure. omnigab locks to 3.12 to keep installs sane.
-%PYTHON% -c "import sys; sys.exit(0 if sys.version_info[:2] == (3, 12) else 1)" 2>nul
+:: Prebuilt CUDA wheels for llama-cpp-python target Python 3.10-3.12, so
+:: those install cleanly. Other versions may fall back to CPU or need a
+:: source build - we warn but no longer hard-block, so any Python runs.
+%PYTHON% -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,12) else 1)" 2>nul
 if errorlevel 1 (
     echo.
-    echo  =============================================
-    echo    [ERROR] omnigab requires Python 3.12.
-    echo  =============================================
+    echo [WARNING] omnigab is tuned for Python 3.10-3.12.
+    for /f "delims=" %%V in ('%PYTHON% -c "import sys; print(sys.version.split()[0])" 2^>nul') do echo           You are running Python %%V.
+    echo           GPU/CUDA wheels for llama-cpp-python may be unavailable here,
+    echo           so install could fall back to CPU or build from source.
+    echo           For guaranteed GPU support, install Python 3.12 and rerun setup.
     echo.
-    %PYTHON% -c "import sys; print(f'   You are running: Python {sys.version.split()[0]}')"
-    echo.
-    echo   Why: prebuilt CUDA wheels for llama-cpp-python only ship for
-    echo        Python 3.10-3.12. Newer Pythons silently fall back to CPU
-    echo        or fail to install GPU acceleration entirely.
-    echo.
-    echo   How to fix:
-    echo     1. Install Python 3.12 from https://www.python.org/downloads/release/python-3128/
-    echo        ^(any 3.12.x release works^).
-    echo     2. During install, check "Add python.exe to PATH".
-    echo     3. Delete the existing venv folder in this directory:
-    echo          rmdir /s /q venv
-    echo     4. Rerun setup.bat
-    echo.
-    echo   Tip: you can keep your other Python versions installed; the venv
-    echo        will pick whichever python is first on PATH after rebuild.
-    echo.
-    pause
-    exit /b 1
+) else (
+    echo [OK] Python 3.10-3.12 confirmed.
 )
-echo [OK] Python 3.12 confirmed.
 
 :: -----------------------------------------------
 :: 2. Virtual environment
@@ -120,7 +126,8 @@ if "!GPU_PRESENT!"=="1" (
 :: cmd batch nested-paren miscounts that bit us before.
 echo.
 echo [SETUP] Installing dependencies...
-pip install --upgrade pip --quiet 2>nul
+echo [SETUP] Updating pip to the latest version...
+python -m pip install --upgrade pip
 
 echo [SETUP] Installing llama-cpp-python ^(GPU/CPU wheel selected automatically^)...
 python "%~dp0scripts\install_llama_cpp.py"
@@ -133,10 +140,10 @@ if errorlevel 1 (
 :: --- Step 4e: project requirements ---
 echo.
 echo [SETUP] Installing application dependencies: fastapi, uvicorn, sentence-transformers, faiss, etc.
-pip install -r requirements.txt --quiet
+pip install -r requirements.txt --no-cache-dir
 if errorlevel 1 (
     echo [WARNING] Some packages had issues. Retrying with output...
-    pip install -r requirements.txt
+    pip install -r requirements.txt --no-cache-dir
 )
 
 :: --- Step 4f: Playwright browser (used by the Indeed apply tool) ---
@@ -163,7 +170,7 @@ if not exist "%GGUF_MODEL%" (
     echo.
     echo [SETUP] Downloading default Qwen2.5-1.5B model ^(~1.1 GB^)...
     if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
-    "%~dp0venv\Scripts\huggingface-cli.exe" download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir "%MODELS_DIR%"
+    "%~dp0venv\Scripts\python.exe" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='Qwen/Qwen2.5-1.5B-Instruct-GGUF', filename='qwen2.5-1.5b-instruct-q4_k_m.gguf', local_dir=r'%MODELS_DIR%')"
     if not exist "%GGUF_MODEL%" (
         echo [ERROR] Model download failed.
         pause

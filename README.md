@@ -2,80 +2,170 @@
   <h1 align="center">OmniGab</h1>
   <p align="center">
     <strong>A private AI assistant that runs entirely on your own computer.</strong><br>
-    No cloud. No API keys. No subscriptions. Your data never leaves your machine.
+    No cloud. No API keys. No subscriptions. Your files never leave your machine.
   </p>
-  <p align="center">
-    <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white" alt="Python 3.10+">
-    <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
-    <img src="https://img.shields.io/badge/OS-Windows%2010%2F11-0078D6?logo=windows&logoColor=white" alt="Windows 10/11">
-    <img src="https://img.shields.io/badge/GPU-CUDA%2012.x-76B900?logo=nvidia&logoColor=white" alt="CUDA 12.x">
-  </p>
+</p>
+
+<p align="center">
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white">
+  <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green">
+  <img alt="Windows 10/11" src="https://img.shields.io/badge/OS-Windows%2010%2F11-0078D6?logo=windows&logoColor=white">
+  <img alt="CUDA 12.x" src="https://img.shields.io/badge/GPU-CUDA%2012.x-76B900?logo=nvidia&logoColor=white">
 </p>
 
 ---
 
-## What is OmniGab?
+## Why this exists
 
-OmniGab is a chat assistant that runs a real language model directly on your PC instead of sending your messages to a company server. You type a question, and a Qwen2.5 model loaded on your own GPU (or CPU) writes the answer locally. Because nothing leaves your computer, you can point it at private documents, personal notes, or work files without handing them to anyone.
+Most AI assistants require you to upload your data to a company's servers. For a lot of what people actually want help with, that is a bad trade. Your lease, your medical bills, your resume, your bank statements: these are exactly the documents where an assistant would be most useful, and exactly the ones you should be most reluctant to hand over.
 
-It is more than a chatbot. The model can decide, on its own, to search your documents, look something up on the web, remember a fact for later, search real job listings, or run one of its built in skills, then use what it finds to answer you. You talk to it through a normal desktop window.
+OmniGab runs the language model on your own GPU. With no server in the loop, privacy stops being a promise in a policy document and becomes a property of how the software is built. Unplug your network and it still works.
 
----
-
-## What it can do
-
-**Chat privately.** Have a normal conversation with a capable local model. Everything runs offline once the model is downloaded.
-
-**Answer from your own documents.** Drop PDFs, Markdown, text, config, or log files into the Docs tab (or the `data/docs` folder) and OmniGab reads and indexes them. Ask a question and it pulls the most relevant passages and answers from them, so you get grounded answers instead of guesses.
-
-**Search the live web.** When something is outside your files, it queries DuckDuckGo, opens the actual pages, reads them, and answers with the source links. No search API key is needed.
-
-**Remember things between sessions.** Tell it a fact ("my location is Austin, TX") and it stores that in a local database, so it still knows next time you open the app.
-
-**Find federal jobs.** It searches real openings through the official USAJOBS API and ranks them against your resume and certifications. It can also open Indeed and other job sites in your normal browser so listings load without bot blocking.
-
-**Draft a federal resume.** Using your active resume plus what it remembers about you, it drafts tailored federal style resumes, and can briefly switch to a faster model just for the drafting step.
-
-**Look up vulnerabilities.** A security tool queries the NIST National Vulnerability Database and the CISA Known Exploited Vulnerabilities catalog for real CVE data.
-
-**Do exact math and parsing.** Instead of guessing at arithmetic, it can run code in a sandboxed Python tool for deterministic results.
-
-**Run drop in skills.** Skills are small folders you can add to extend it. It ships with summarize a document, extract action items, compare two documents, and web search and cite.
-
-**Swap models on the fly.** From the Models tab you can move between a small fast model and a large accurate one. Bigger models are noticeably better at deciding when to use tools.
+That constraint shapes everything else here.
 
 ---
 
-## How it works (the technology)
+## What it does
 
-OmniGab is a Python application that wires several local components together.
+**Chat with a real model, offline.** A Qwen2.5 model runs locally through llama.cpp, on your GPU if you have an NVIDIA card and on your CPU if you do not.
 
-**The model.** Language models run through `llama-cpp-python`, which loads Qwen2.5 Instruct models in GGUF format (quantized to Q4_K_M so they fit in modest memory). On an NVIDIA card the layers are offloaded to the GPU with CUDA 12.x for speed; with no GPU it falls back to CPU. The context window is 8192 tokens.
+**Answer questions from your own documents.** Drop PDFs, Markdown, text, config files, or logs into the Docs tab. They are chunked, embedded, and indexed into a local vector store. Ask a question and it retrieves the relevant passages and answers from them, so you get grounded answers with sources instead of guesses.
 
-**The agent loop.** Rather than a plain prompt and reply, OmniGab runs an agent loop. The model is given a catalog of tools and answers with a `<tool_call>` instruction when it wants one. The app runs that tool, feeds the result back, and lets the model continue until it is ready to answer. This is what lets one message trigger a document search, a web lookup, and a memory write in sequence.
+**Remember things between sessions.** Tell it a fact once and it stores it in a local SQLite file. Still there next week.
 
-**Document search (RAG).** Your files are split into overlapping chunks and turned into vectors with the `sentence-transformers/all-MiniLM-L6-v2` embedding model. Those vectors live in a FAISS index, and a question is embedded the same way to retrieve the closest passages by cosine similarity. PDFs are read with PyMuPDF.
+**Search for jobs across several boards.** Federal roles come from the official USAJOBS API, ranked against your resume and certifications. Private-sector roles come from Amazon Jobs, RemoteOK, and any company using Greenhouse or Lever. See [Job search](#job-search) for how boards that prohibit automation are handled.
 
-**Web access.** Search comes from the keyless `ddgs` DuckDuckGo library, and page content is fetched with `requests` and cleaned with BeautifulSoup, with a URL safety check before anything is opened.
+**Draft a federal resume.** Using your existing resume plus what it remembers about you, it drafts a tailored federal-style resume for a specific posting.
 
-**Memory.** Facts and session data persist in a local SQLite database (`data/storage.db`), so memory survives restarts.
+**Look up vulnerabilities.** Queries the NIST National Vulnerability Database and the CISA Known Exploited Vulnerabilities catalog for real CVE data.
 
-**Interfaces.** The default is a native desktop window built with Python's `tkinter`. There is also a browser based UI served by a local FastAPI and Uvicorn server at `http://localhost:8080`, and a plain terminal chat.
+**Do exact math.** Rather than guessing at arithmetic, it runs code in a sandboxed Python tool.
 
-Everything above runs on your hardware. There is no external API in the request path.
+**Run drop-in skills.** Small folders that extend it. Ships with document summarizing, action item extraction, document comparison, and cited web search.
 
 ---
 
-## The interface
+## Install
 
-The desktop window is organized into tabs:
+You need **Python 3.10, 3.11, or 3.12** and **Windows 10 or 11**. An NVIDIA GPU is optional but makes a large difference.
 
-- **Chat** is the main conversation, showing the model name, token speed, and whether web access is on.
-- **Jobs** runs the job search and ranking features.
-- **Docs** is where you add and manage the documents it can search.
-- **Models** lets you download and switch between the available models.
-- **Settings** controls behavior like web search and generation options.
-- **Developer** exposes lower level details for debugging.
+```bash
+git clone https://github.com/duckcoop/omnigab.git
+cd omnigab
+setup.bat
+```
+
+`setup.bat` finds your Python, creates a virtual environment, detects your GPU, installs `llama-cpp-python` with the matching CUDA wheel, wires in the CUDA runtime DLLs, installs dependencies, downloads the default model (~1.1 GB), builds the document index, and launches the app.
+
+The first run downloads a few GB. Later runs start in seconds.
+
+After setup, **double click `omnigab.bat`.** That is the only thing you need to run.
+
+---
+
+## Models
+
+Pick one in the Models tab. Bigger models answer better and use tools far more reliably, but need more memory and run slower.
+
+| Model | Disk | Suggested RAM | Notes |
+|---|---|---|---|
+| Qwen 2.5 1.5B | ~1.1 GB | ~4 GB | Downloaded by default. Fast, but unreliable at tool calling. |
+| Qwen 2.5 3B | ~2.1 GB | ~6 GB | Reasonable balance. |
+| Qwen 2.5 7B | ~4.4 GB | ~10 GB | First size that handles tools well. |
+| Qwen 2.5 14B | ~8.9 GB | ~16 GB | Best quality. Wants a 12 GB GPU to stay fast. |
+
+The header reads `tools: broken` on models too small to use tools reliably. That is a real limitation of small models rather than a bug, and switching to 7B or larger resolves it.
+
+### Context window
+
+Settings → Advanced controls how much the model can hold at once. Auto sizes it to fit your GPU, and the panel shows both what is currently loaded and what your card could handle.
+
+The KV cache is quantized to q8_0, which roughly halves its memory cost. On a 12 GB card the 14B model fits 16384 tokens comfortably; 32768 spills into system RAM and slows generation to a crawl.
+
+---
+
+## Job search
+
+Job boards differ in how they allow access, and OmniGab is explicit about which is which rather than pretending they are all the same.
+
+| Access | Boards | How it works |
+|---|---|---|
+| **Public API** | USAJOBS, Amazon Jobs, RemoteOK, Greenhouse, Lever | Documented endpoints. Fast, stable, allowed. Results appear in the app. |
+| **Browser handoff** | LinkedIn, Handshake, Indeed | The search URL is built for you and opened in your own browser. |
+
+The handoff design is deliberate, not a shortfall. LinkedIn's terms prohibit automated access and they enforce it with account restrictions; Handshake needs a school single sign-on session. Scraping either risks your account to obtain results you can get instantly in a browser you are already signed into. OmniGab saves you the typing and stays out of the way.
+
+Every USAJOBS link is verified with an HTTP request before you see it, and dead or closed postings are discarded. Result lists are rendered from that verified data by code, never retyped by the model, so a link cannot be invented.
+
+---
+
+## Document extraction (in progress)
+
+OmniGab is growing a life-admin capability: read a bill or a lease, extract the deadline and the amount, and remind you before it matters.
+
+The hard part is not extraction, it is trust. A tool that occasionally invents a due date is worse than no tool, because you stop checking it. So every extracted value passes a **mechanical verification gate** before you ever see it:
+
+1. The model must return the exact sentence it took the value from. Code searches the document for that sentence. No match means the extraction is discarded entirely.
+2. The value must appear inside its own quote. If not, the item is flagged for you to check rather than shown as confirmed.
+3. The value must have the right shape for an amount or a date.
+
+String matching, not similarity scoring, because `$142.87` and `$1,428.70` are highly similar and one of them is wrong.
+
+See [`docs/EXTRACTION.md`](docs/EXTRACTION.md) for the design and the 20 adversarial tests.
+
+---
+
+## Privacy, concretely
+
+| What | Where it lives |
+|---|---|
+| The language model | `models/`, on your disk, running on your GPU |
+| Your documents | `data/docs/`, indexed into a local vector store |
+| What it remembers | `data/storage.db`, a local SQLite file |
+| Chat history | Local, in memory and on disk |
+
+The only time OmniGab touches the network is when you ask it to: a web search, a job board query, a CVE lookup, or downloading a model. Turn web search off in Settings and it makes no network calls at all.
+
+Nothing is uploaded. There is no account, no telemetry, and no server to have a breach.
+
+---
+
+## Repository layout
+
+```
+omnigab/
+├── setup.bat              One click installer, run this first
+├── omnigab.bat            Opens the app, run this every time after
+├── desktop_app.py         The desktop app (tkinter)
+├── requirements.txt
+│
+├── src/
+│   ├── core/              Agent loop, model manager, result rendering
+│   ├── tools/             Document search, web, memory, jobs, CVE, Python
+│   ├── extraction/        Bill extraction schema and verification gate
+│   ├── jobs/              Job board sources and multi-board search
+│   ├── web_app.py         Local FastAPI backend
+│   ├── generator.py       llama.cpp wrapper with GPU offload
+│   ├── embeddings.py      sentence-transformers embeddings
+│   ├── vectorstore.py     FAISS index
+│   └── persistent_memory.py   SQLite memory
+│
+├── skills/                Drop-in skills, one folder each
+├── docs/                  Setup guide, extraction design, deferred work
+├── tests/                 Test suites, no GPU required
+└── data/                  Your documents and local state (gitignored)
+```
+
+---
+
+## Tests
+
+```bash
+venv\Scripts\python.exe tests\test_omnigab.py --all
+venv\Scripts\python.exe tests\test_gate.py
+```
+
+Neither needs a GPU or a downloaded model.
 
 ---
 
@@ -83,99 +173,15 @@ The desktop window is organized into tabs:
 
 | Requirement | Details |
 |---|---|
-| **Python 3.10 to 3.12** | Any patch version. These versions have prebuilt `llama-cpp-python` CUDA wheels, so GPU support installs cleanly. Newer versions (3.13+) still run but print a warning, since a matching GPU wheel may not exist yet. Check "Add python.exe to PATH" during install. |
-| **Windows 10 or 11** | The setup and launch scripts are Windows batch files. |
-| **Git** | To clone the repository (or download the ZIP). |
-| **RAM** | About 4 GB for the smallest model, 16 GB for the 14B model. |
-| **NVIDIA GPU with CUDA 12.x** (optional) | Recommended for speed. You do not install the CUDA Toolkit yourself; setup pulls the CUDA runtime DLLs from pip. CPU only also works, just slower. |
-| **Disk space** | Roughly 3 GB total with the small model, up to about 12 GB with the 14B model and full dependencies. |
-
----
-
-## Quick start
-
-1. **Clone the repository.**
-
-   ```cmd
-   git clone https://github.com/duckcoop/omnigab.git
-   cd omnigab
-   ```
-
-2. **Run the setup script.** Double click `setup.bat`, or run it from a terminal:
-
-   ```cmd
-   setup.bat
-   ```
-
-   Setup finds a real Python, creates the `venv` virtual environment, updates pip, detects your GPU, installs `llama-cpp-python` with the matching CUDA wheel, wires in the CUDA runtime DLLs, installs the remaining dependencies and the Playwright browser, downloads the default model, builds the document index, and launches the app. The first run downloads a few GB, so give it several minutes. Later runs reuse everything and start quickly.
-
-3. **Launch any time.** After the first setup, double click `omnigab.bat`. That is the only thing you need to run.
-
----
-
-## Models
-
-Pick a model in the Models tab. Larger models answer better and use tools more reliably, but need more memory and run slower.
-
-| Model | Size on disk | Suggested RAM | Notes |
-|---|---|---|---|
-| Qwen 2.5 1.5B | ~1.1 GB | ~4 GB | Fastest, downloaded by default |
-| Qwen 2.5 3B | ~2.1 GB | ~6 GB | Good balance |
-| Qwen 2.5 7B | ~4.4 GB | ~10 GB | Strong quality |
-| Qwen 2.5 14B | ~8.9 GB | ~16 GB | Best quality |
-
----
-
-## Repository structure
-
-```
-omnigab/
-├── setup.bat              One click installer, run this first (Windows)
-├── omnigab.bat            Opens the app, run this every time after
-├── desktop_app.py         The desktop app itself (tkinter)
-├── requirements.txt
-│
-├── docs/                  Setup guide, skill authoring notes, deferred work
-│
-├── src/
-│   ├── core/              Agent loop, model manager, tool protocol
-│   ├── tools/             Built in tools (document search, web, memory,
-│   │                      USAJOBS, CVE lookup, python eval, resume drafter)
-│   ├── web_app.py         FastAPI server (localhost:8080)
-│   ├── generator.py       llama-cpp wrapper with GPU offload and streaming
-│   ├── embeddings.py      sentence-transformers embeddings
-│   ├── vectorstore.py     FAISS vector store
-│   ├── ingest.py          Document loading and chunking (PDF via PyMuPDF)
-│   ├── web_search.py      DuckDuckGo search and page scraping
-│   └── persistent_memory.py   SQLite backed cross session memory
-│
-├── skills/                Drop in skills (one folder per skill)
-│   ├── summarize_document/
-│   ├── extract_action_items/
-│   ├── compare_two_documents/
-│   └── web_search_and_cite/
-│
-├── scripts/               Setup and maintenance helpers
-│   ├── detect_gpu.py          GPU probe used by setup.bat
-│   ├── install_llama_cpp.py   Installs the correct llama-cpp-python wheel
-│   ├── install_cuda_dlls.py   Wires CUDA runtime DLLs into llama_cpp/lib
-│   └── ...
-│
-├── data/                  Local data
-│   ├── docs/              Documents to index
-│   └── storage.db         Persistent memory store
-│
-└── models/                GGUF model files
-```
-
----
-
-## Privacy
-
-OmniGab is local first by design. The language model, the document index, and your memory all live on your machine. The only time it reaches the internet is when you ask it to search the web, download a model, or search job listings. Nothing else is sent anywhere.
+| Python 3.10 to 3.12 | These have prebuilt `llama-cpp-python` CUDA wheels. Newer versions run but may lack a GPU wheel. Check "Add python.exe to PATH" when installing. |
+| Windows 10 or 11 | The setup and launch scripts are batch files. |
+| Git | To clone the repository. |
+| RAM | ~4 GB for the smallest model, ~16 GB for the 14B. |
+| NVIDIA GPU, CUDA 12.x | Optional. You do not install the CUDA Toolkit yourself; setup pulls the runtime DLLs from pip. CPU-only works, just slower. |
+| Disk | ~3 GB with the small model, ~12 GB with the 14B. |
 
 ---
 
 ## License
 
-Released under the MIT License. See [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE).

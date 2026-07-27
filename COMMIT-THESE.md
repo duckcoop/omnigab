@@ -1,106 +1,92 @@
-# Round 4: repo cleanup
+# Round 5: job boards, README, and one honesty bug
 
-First, the privacy fix worked. Your screenshot:
-
-> **You:** is this all public?
-> **omnigab:** No, nothing typed here is uploaded anywhere. The documents you add in the Docs tab are indexed into a vector store on your machine and never leave it... they remain private to your device.
-
-That is the correct answer, and it is the one your product depends on being correct.
-
----
-
-## The folder looks messier than the repo actually is
-
-Worth separating these two things, because they need different fixes.
-
-Your Explorer window shows 28 items. A person who clones your repo sees 14 files in the root. The difference is runtime junk that only exists on your disk and is already gitignored:
-
-| On your disk only | What it is |
-| --- | --- |
-| `venv/` | your virtual environment |
-| `models/` | 9 GB of downloaded weights |
-| `data/`, `logs/`, `vectorstore/` | generated state and indexes |
-| `__pycache__/` | compiled bytecode |
-| `.env` | your API token, correctly untracked, I checked |
-
-None of that reaches GitHub. It just makes your local folder look busy. That part is normal and fine.
-
-What genuinely was cluttered is the tracked root, and that I have cleaned.
-
----
-
-## What I changed
-
-**Moved into `docs/`:** `SETUP_GUIDE.md`, `SKILL_LEARNING_PROMPT.md`, `TODOS.md`. Nothing linked to them, so nothing broke.
-
-**Deleted the 4 fake test docs.** Nothing in the code, README, or tests referenced them. I verified before touching them.
-
-**Cut down to one entry point,** as you chose. `launcher.py` and `start.bat` go. `setup.bat` already launches `desktop_app.py` directly and `omnigab.bat` does too, so nothing depended on either file. Note this also removes the browser UI launcher and `--terminal` mode. The FastAPI server still runs (the desktop app talks to it), so `http://localhost:8080` still works if you type it. You just do not advertise it.
-
-**Added `data/docs/.gitkeep`** so a fresh clone still has the folder, with a note inside explaining what goes there. Git does not track empty directories, so without this a new user clones and the folder is simply missing.
-
-**Improved the empty-index message.** With no documents, `rag_search` returned a bare "No documents indexed." Now it tells the model to explain that files can be added in the Docs tab or dropped in `data/docs`, and that they stay on the machine. New users hit this state on their very first question.
-
-**Updated the README** to match: launch instructions now say `omnigab.bat` and nothing else, and the structure diagram reflects the new layout.
-
-Root goes from 14 tracked files to 9:
-
-```
-.flake8  .gitattributes  .gitignore  LICENSE  README.md
-desktop_app.py  omnigab.bat  requirements.txt  setup.bat
-```
-
----
-
-## Commit it
-
-The `rm` calls failed from my side because the B: drive blocks deletes, so `git rm` below does the actual deleting. That is also the correct way to do it, since it stages the removal at the same time.
+## Commit everything
 
 ```powershell
 cd B:\omnigab\omnigab
 
-git rm launcher.py start.bat
-git rm data/docs/active_directory_guide.md data/docs/network_infrastructure.md data/docs/vpn_setup.md data/docs/workstation_setup.md
 git add -A
-git commit -m "cut to a single entry point, move guides into docs, drop test fixtures"
+git commit -m "add extraction schema and mechanical verification gate for bills"
+git push origin main
+```
 
-git add src/tools/rag_search.py
-git commit -m "explain how to add documents when the index is empty"
+That `git add -A` also clears the two scratch files from last round, since deleting them locally did not untrack them.
+
+Then, so the history stays readable, the rest as separate commits:
+
+```powershell
+git add src/jobs/ src/tools/job_boards.py src/tools/__init__.py
+git commit -m "add multi-board job search with api sources and browser handoff"
+
+git add src/core/job_renderer.py
+git commit -m "make the result renderer source-aware and stop claiming unverified links were checked"
+
+git add README.md
+git commit -m "rewrite readme around what the tool is and why"
 
 git push origin main
 ```
 
-`git add -A` picks up the moves into `docs/` as renames, so the history stays readable.
+---
 
-Afterwards, check it looks right:
+## On LinkedIn, Indeed, Handshake, and Amazon
 
-```powershell
-git ls-files | Select-String -NotMatch "/"
-```
+You asked for four scrapers. I built two of them properly and deliberately did not build the other two. Here is the reasoning, because it changes what your tool is rather than just how it is implemented.
 
-Should list exactly the 9 files above.
+Job boards fall into three groups:
+
+| Access | Boards | Reality |
+| --- | --- | --- |
+| Public API | USAJOBS, **Amazon Jobs**, **RemoteOK**, **Greenhouse**, **Lever** | Documented JSON endpoints. Fast, stable, allowed. |
+| Scrape | Indeed | No API. Needs a real browser, throws Cloudflare challenges constantly. |
+| Prohibited | **LinkedIn**, **Handshake** | Terms forbid automated access and it is actively enforced. |
+
+I tested every API above against the live endpoints before writing a line of code. Amazon Jobs returned 264 matches for "information security"; Greenhouse returned 533 open roles on Stripe's board. Those work.
+
+LinkedIn is the one worth being blunt about. Their terms prohibit automated access and they enforce it with account restrictions. Scraping LinkedIn to find jobs risks the LinkedIn account you are using to apply for jobs. That is a bad trade at any level of technical success, and it is not a trade I would make quietly on your behalf.
+
+So LinkedIn, Handshake, and plain Indeed searching use **browser handoff**: omnigab builds the exact search URL and opens it in your own browser, where you are already logged in. You get the same results, your account stays safe, and there is nothing to break the next time they change their markup.
+
+This is a better design, not a consolation prize. It is also an honest thing to say in an interview: "I chose not to scrape LinkedIn because their terms prohibit it and enforcement targets the user's own account, so I built a handoff instead."
+
+Indeed Easy Apply still works through the existing Playwright tool. That is you driving your own logged-in browser, which is a different thing from scraping their search results at scale.
 
 ---
 
-## Still outstanding from earlier rounds
+## What I built
 
-If you have not run these yet, they are the two that matter most:
+**`src/jobs/sources.py`** — a source registry. Every board declares how it is accessed (`api`, `scrape`, or `handoff`) and normalizes to one posting shape. Adding a board is now a small class, not a new scraper.
 
-```powershell
-git rm --cached data/resume_drafts/20260526_180712_supervisory_it_cybersecurity_specialist_plcypln_in.json
-git rm --cached data/resume_drafts/20260526_180712_supervisory_it_cybersecurity_specialist_plcypln_in.md
-git add .gitignore
-git commit -m "stop tracking generated resume drafts"
+Implemented: `AmazonJobs`, `RemoteOK`, `GreenhouseBoard` (any company token), `LeverBoard` (any company token), and handoff entries for LinkedIn, Handshake, and Indeed.
 
-git config user.email "145511592+duckcoop@users.noreply.github.com"
-```
+The Greenhouse and Lever ones are worth knowing about. Thousands of companies host their careers pages there, so `greenhouse_company: "stripe"` searches Stripe's real board through a documented API. That covers a large slice of tech hiring with no scraping at all.
 
-The first removes your work history from the public repo. The second stops future commits carrying your real email. Background in `PRIVACY-CHECK.md`.
+**`src/tools/job_boards.py`** — the agent-facing tool, registered in `src/tools/__init__.py`. One source failing never fails the whole search; it collects errors and returns partial results, because boards go down.
 
-Delete the two scratch files when you are done with them:
+**Renderer fixes.** Plugging in new sources exposed three bugs in `job_renderer.py`:
 
-```powershell
-Remove-Item COMMIT-THESE.md, PRIVACY-CHECK.md
-```
+1. Every link said "Apply on USAJOBS", including Amazon ones.
+2. Every posting printed "Series ?" — a federal concept that is noise elsewhere.
+3. Every result claimed *"Every link above returned HTTP 200 when checked."*
 
-Tests: 24 passed, 0 failed, verified against a copy with the deletions applied.
+That third one is the one that actually mattered. `usajobs_search` really does fetch every URL and discard dead ones. The public board APIs do not. So the renderer was making a verification claim the data had not earned, which is the same class of problem as the invented links I fixed earlier, just from the other direction. It now only makes that claim when the payload proves it.
+
+Handoff links now render in the results too, under a line explaining why they are links rather than listings.
+
+---
+
+## README
+
+Rewritten around what the tool is and why it exists, rather than a feature list. The lead is the actual argument: your lease and your medical bills are exactly the documents an assistant would be most useful for and exactly the ones you should be least willing to upload, and running the model locally turns privacy from a promise into a property of the architecture.
+
+Also added: an honest job board access table, the context window guidance including the q8_0 KV cache math, a concrete privacy table showing where each kind of data physically lives, and a section on the extraction gate.
+
+One thing I made explicit rather than hiding: the `tools: broken` header on small models. It now says plainly that 1.5B cannot use tools reliably and 7B is the first size that can. Users will hit that regardless, and finding it documented reads as competence rather than a bug.
+
+---
+
+## Still not done
+
+The ASVAB GUI. You said ugly, clunky, weak questions, and all I have shipped there is the answer-position fix. It is untouched otherwise.
+
+Tests: 24/24 on the main suite, 20/20 on the gate.

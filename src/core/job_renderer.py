@@ -47,11 +47,17 @@ def _join(values: Any) -> str:
 
 
 def _match_line(job: dict) -> str:
-    """Match percent and series. 0 is a real value; only None means n/a."""
+    """Match percent, plus series code when the source has one.
+
+    Series codes are a federal concept. Printing "Series ?" on an Amazon
+    posting is noise, so the segment is omitted when absent.
+    """
     raw = job.get("match_percent")
     match = "n/a" if raw is None else f"{raw}%"
-    series = _clean(job.get("series_code"), "?")
-    return f"Match: {match} · Series {series}"
+    series = _clean(job.get("series_code"), "")
+    if series:
+        return f"Match: {match} · Series {series}"
+    return f"Match: {match}"
 
 
 def _gap_line(job: dict) -> str:
@@ -92,7 +98,14 @@ def render_job(job: dict, index: int) -> str:
 
     url = _clean(job.get("url"), "")
     if url:
-        lines.append(f"[Apply on USAJOBS]({url})")
+        labels = {
+            "amazon": "View on Amazon Jobs",
+            "remoteok": "View on RemoteOK",
+            "greenhouse": "View posting",
+            "lever": "View posting",
+        }
+        label = labels.get(job.get("source"), "Apply on USAJOBS")
+        lines.append(f"[{label}]({url})")
     else:
         # Should not happen: the tool discards entries without a live URL.
         lines.append("(no verified link available)")
@@ -111,7 +124,8 @@ def render_results(payload: dict, limit: int = 10) -> str:
         return ""
 
     results = payload.get("results") or []
-    if not results:
+    handoffs_only = payload.get("handoffs") or []
+    if not results and not handoffs_only:
         return ""
 
     blocks = [render_job(job, i) for i, job in enumerate(results[:limit], 1)]
@@ -133,10 +147,28 @@ def render_results(payload: dict, limit: int = 10) -> str:
         footer_bits.append(f"{dropped} dead link(s) discarded.")
     if closed:
         footer_bits.append(f"{closed} closed posting(s) discarded.")
-    footer_bits.append("Every link above returned HTTP 200 when checked.")
+    # Only claim verification when the source actually performed it.
+    # usajobs_search fetches every URL; the public board APIs do not.
+    if payload.get("verification"):
+        footer_bits.append("Every link above returned HTTP 200 when checked.")
+
+    # Boards that prohibit automation return a prefilled search link
+    # instead of listings. Surfacing them here is the whole point: the
+    # user still gets to those results, just in their own browser.
+    handoff_block = ""
+    handoffs = payload.get("handoffs") or []
+    if handoffs:
+        lines = ["Search these in your browser (they block automated access):"]
+        for h in handoffs:
+            label = h.get("label") or h.get("source", "board")
+            url = h.get("url", "")
+            if url:
+                lines.append(f"- [{label}]({url})")
+        handoff_block = "\n\n" + "\n".join(lines)
 
     footer = " ".join(footer_bits)
-    return f"{header}\n\n{body}\n\n_{footer}_"
+    footer_block = f"\n\n_{footer}_" if footer else ""
+    return f"{header}\n\n{body}{handoff_block}{footer_block}"
 
 
 def summarize_for_model(payload: dict, limit: int = 10) -> str:

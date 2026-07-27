@@ -60,6 +60,13 @@ def build_default_toolset(*, embedder, store, web_search, memory,
     )
     tools[uj.name] = uj
 
+    # Private-sector boards. API sources return listings; boards that
+    # prohibit automation (LinkedIn, Handshake, Indeed) return a prefilled
+    # search URL for the user's own browser instead of being scraped.
+    from tools.job_boards import JobBoardsTool
+    jb = JobBoardsTool()
+    tools[jb.name] = jb
+
     # Cloudflare-proof fallback: opens URLs in the user's real browser.
     tools["open_in_browser"] = OpenInBrowserTool()
 

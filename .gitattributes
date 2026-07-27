@@ -1,0 +1,28 @@
+# Normalize line endings.
+#
+# Without this, a Windows checkout writes CRLF into the working tree while
+# the repository stores LF, and git reports every file in the project as
+# modified. That buries real changes in noise and makes clean commits
+# impossible.
+#
+# `text=auto` tells git to store text files with LF in the repository and
+# convert to the platform's native ending on checkout.
+* text=auto
+
+# Windows-only scripts must keep CRLF or cmd.exe can mis-parse them.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Shell scripts must keep LF even on Windows.
+*.sh text eol=lf
+
+# Binary files: never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.gguf binary
+*.db binary
+*.ico binary

@@ -18,6 +18,9 @@ data/*.db-wal
 data/*.db-shm
 data/context_override.json
 data/kev_catalog.json
+
+# Generated resume drafts. These contain the user's real work history.
+data/resume_drafts/
 data/playwright_profile/
 data/indeed_runs/
 data/usajobs_runs/

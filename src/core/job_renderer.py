@@ -1,0 +1,167 @@
+"""Deterministic rendering of job search results.
+
+Why this module exists
+----------------------
+The agent used to hand the raw usajobs_search JSON to the language model
+and instruct it, in ~1500 tokens of system prompt, to copy each job's URL
+"byte for byte" into a markdown list.
+
+That approach fails for two reasons:
+
+1. Small quantized models cannot reliably transcribe long unique URLs.
+   Under any context pressure they template collapse (reuse job 1's URL
+   for every job) or invent plausible looking URLs that 404. The tool
+   layer already HTTP verifies every URL and discards dead ones, so every
+   dead link the user saw was invented during rendering, not fetched.
+
+2. It wastes context. See the budget note in agent.py.
+
+The data is already structured and already verified. Formatting structured
+data is a job for code, not for a language model. This module renders the
+list; the model only writes the short prose comment above it.
+
+Every URL emitted here comes from the tool result dict, so a link can only
+appear if the tool actually fetched it and got HTTP 200.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def _clean(value: Any, fallback: str) -> str:
+    """Normalize a possibly missing/blank field to display text."""
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    return text or fallback
+
+
+def _join(values: Any) -> str:
+    """Render a list field as a comma separated string, or '' if empty."""
+    if not values:
+        return ""
+    if isinstance(values, str):
+        return values.strip()
+    return ", ".join(str(v).strip() for v in values if str(v).strip())
+
+
+def _match_line(job: dict) -> str:
+    """Match percent and series. 0 is a real value; only None means n/a."""
+    raw = job.get("match_percent")
+    match = "n/a" if raw is None else f"{raw}%"
+    series = _clean(job.get("series_code"), "?")
+    return f"Match: {match} · Series {series}"
+
+
+def _gap_line(job: dict) -> str:
+    """Summarize what the user is missing for this posting. '' if nothing."""
+    segments = []
+    certs = _join(job.get("missing_certs"))
+    if certs:
+        segments.append(f"certs {certs}")
+    clearance = _clean(job.get("missing_clearance"), "")
+    if clearance:
+        segments.append(f"clearance {clearance}")
+    skills = _join(job.get("missing_skills"))
+    if skills:
+        segments.append(f"skills {skills}")
+    return "Gap: " + "  ·  ".join(segments) if segments else ""
+
+
+def render_job(job: dict, index: int) -> str:
+    """Render one job posting as a markdown block."""
+    title = _clean(job.get("title"), "(untitled posting)")
+    agency = _clean(job.get("agency"), "(agency not listed)")
+    location = _clean(job.get("location"), "(anywhere)")
+    salary = _clean(job.get("salary"), "(salary not listed)")
+
+    lines = [
+        f"**{index}. {title}**",
+        f"{agency} · {location} · {salary}",
+        _match_line(job),
+    ]
+
+    certs = _join(job.get("cert_matches"))
+    if certs:
+        lines.append(f"Certs matched: {certs}")
+
+    gap = _gap_line(job)
+    if gap:
+        lines.append(gap)
+
+    url = _clean(job.get("url"), "")
+    if url:
+        lines.append(f"[Apply on USAJOBS]({url})")
+    else:
+        # Should not happen: the tool discards entries without a live URL.
+        lines.append("(no verified link available)")
+
+    return "\n".join(lines)
+
+
+def render_results(payload: dict, limit: int = 10) -> str:
+    """Render a full usajobs_search result payload as markdown.
+
+    `payload` is the dict the tool returns. Returns '' when the payload
+    holds no renderable results, which signals the caller to fall back to
+    normal model output.
+    """
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return ""
+
+    results = payload.get("results") or []
+    if not results:
+        return ""
+
+    blocks = [render_job(job, i) for i, job in enumerate(results[:limit], 1)]
+    body = "\n\n".join(blocks)
+
+    found = payload.get("found", len(results))
+    location = _clean(payload.get("location"), "(anywhere)")
+    header = f"Found {found} open postings · {location}"
+
+    shown = min(limit, len(results))
+    footer_bits = []
+    if found > shown:
+        footer_bits.append(f"Showing the top {shown}.")
+
+    discarded = payload.get("dead_links_discarded") or []
+    closed = payload.get("closed_listings_discarded") or 0
+    dropped = len(discarded) if isinstance(discarded, list) else int(discarded or 0)
+    if dropped:
+        footer_bits.append(f"{dropped} dead link(s) discarded.")
+    if closed:
+        footer_bits.append(f"{closed} closed posting(s) discarded.")
+    footer_bits.append("Every link above returned HTTP 200 when checked.")
+
+    footer = " ".join(footer_bits)
+    return f"{header}\n\n{body}\n\n_{footer}_"
+
+
+def summarize_for_model(payload: dict, limit: int = 10) -> str:
+    """A compact, URL free digest of the results for the model to comment on.
+
+    The model never sees the URLs, so it cannot copy them wrong and it
+    cannot invent them. It gets just enough to write a sentence or two of
+    useful commentary, at roughly a tenth of the token cost of the full
+    JSON payload.
+    """
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return ""
+
+    results = payload.get("results") or []
+    if not results:
+        return "The job search returned no open postings."
+
+    lines = [f"{payload.get('found', len(results))} open postings found."]
+    for i, job in enumerate(results[:limit], 1):
+        title = _clean(job.get("title"), "untitled")
+        agency = _clean(job.get("agency"), "unknown agency")
+        raw = job.get("match_percent")
+        match = "unscored" if raw is None else f"{raw}% match"
+        certs = _join(job.get("cert_matches"))
+        cert_note = f", certs matched: {certs}" if certs else ""
+        lines.append(f"{i}. {title} at {agency}, {match}{cert_note}")
+
+    return "\n".join(lines)

@@ -7,6 +7,17 @@ user_memory.json
 data/model_state.json
 data/*.sqlite3
 data/memory.db
+
+# Runtime state. None of this belongs in the repo: it is generated on the
+# user's machine, differs per install, and storage.db holds personal
+# memory (location, learned facts, application history).
+data/storage.db
+data/storage.db-journal
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/context_override.json
+data/kev_catalog.json
 data/playwright_profile/
 data/indeed_runs/
 data/usajobs_runs/

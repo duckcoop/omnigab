@@ -1190,7 +1190,17 @@ class RAGApp(tk.Tk):
                  fg=FG_DIM, bg=BG, font=FONT_SM, anchor="w").pack(fill="x", padx=16, pady=(0, 4))
 
         self.models_status = tk.Label(frame, text="", fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w")
-        self.models_status.pack(fill="x", padx=16, pady=(0, 8))
+        self.models_status.pack(fill="x", padx=16, pady=(0, 4))
+
+        # Download progress. Hidden until a download starts, because an
+        # empty bar sitting on screen reads as a broken one.
+        self.dl_frame = tk.Frame(frame, bg=BG)
+        self.dl_bar = ttk.Progressbar(self.dl_frame, mode="determinate",
+                                      maximum=100, length=420)
+        self.dl_bar.pack(side="left")
+        self.dl_label = tk.Label(self.dl_frame, text="", fg=FG_DIM, bg=BG,
+                                 font=FONT_XS, anchor="w")
+        self.dl_label.pack(side="left", padx=8)
 
         # Scrollable container for per-model rows.
         outer = tk.Frame(frame, bg=BG)
@@ -1307,6 +1317,8 @@ class RAGApp(tk.Tk):
             return
 
         self.models_status.configure(text=f"Downloading {info['name']}…", fg=AMBER)
+        self._show_progress(True)
+        self._dl_started = time.monotonic()
 
         def do():
             try:
@@ -1314,20 +1326,79 @@ class RAGApp(tk.Tk):
                                          {"filename": filename, "confirmed": True}):
                     ctype = chunk.get("type")
                     if ctype == "start":
-                        self.after(0, lambda: self.models_status.configure(
-                            text=f"Downloading {filename} from {chunk.get('repo')}…", fg=AMBER))
+                        total = chunk.get("total_bytes")
+                        self.after(0, lambda t=total: self._dl_start(filename, t))
+                    elif ctype == "progress":
+                        self.after(0, lambda c=chunk: self._dl_progress(c))
                     elif ctype == "done":
                         self.after(0, lambda: self.models_status.configure(
                             text=f"Downloaded {filename}.", fg=GREEN))
+                        self.after(0, lambda: self._show_progress(False))
                         self.after(0, self._load_models)
                     elif ctype == "error":
                         msg = chunk.get("message", "download failed")
                         self.after(0, lambda m=msg: self.models_status.configure(
                             text=f"Error: {m}", fg=RED))
+                        self.after(0, lambda: self._show_progress(False))
             except Exception as e:
                 self.after(0, lambda: self.models_status.configure(text=str(e), fg=RED))
+                self.after(0, lambda: self._show_progress(False))
 
         threading.Thread(target=do, daemon=True).start()
+
+    # ---------------- download progress helpers ----------------
+
+    @staticmethod
+    def _human_bytes(n):
+        """Bytes as a short human string. Model files are GB-scale."""
+        if not n:
+            return "0 B"
+        for unit in ("B", "KB", "MB", "GB", "TB"):
+            if abs(n) < 1024:
+                return f"{n:.1f} {unit}" if unit != "B" else f"{int(n)} B"
+            n /= 1024
+        return f"{n:.1f} PB"
+
+    def _show_progress(self, visible):
+        if visible:
+            self.dl_frame.pack(fill="x", padx=16, pady=(0, 8))
+            self.dl_bar.configure(value=0)
+            self.dl_label.configure(text="starting…")
+        else:
+            self.dl_frame.pack_forget()
+
+    def _dl_start(self, filename, total_bytes):
+        self._dl_total = total_bytes
+        if total_bytes:
+            self.dl_bar.configure(mode="determinate", maximum=100, value=0)
+            self.dl_label.configure(text=f"0% of {self._human_bytes(total_bytes)}")
+        else:
+            # Size unknown: sweep instead of lying about a percentage.
+            self.dl_bar.configure(mode="indeterminate")
+            self.dl_bar.start(12)
+            self.dl_label.configure(text="downloading…")
+        self.models_status.configure(text=f"Downloading {filename}…", fg=AMBER)
+
+    def _dl_progress(self, chunk):
+        done = chunk.get("downloaded_bytes", 0)
+        total = chunk.get("total_bytes") or getattr(self, "_dl_total", None)
+        elapsed = max(time.monotonic() - getattr(self, "_dl_started", 0), 0.001)
+        rate = done / elapsed
+
+        parts = [self._human_bytes(done)]
+        if total:
+            pct = min(100.0, 100.0 * done / total)
+            self.dl_bar.configure(mode="determinate", value=pct)
+            parts = [f"{pct:.1f}%", f"{self._human_bytes(done)} of "
+                                    f"{self._human_bytes(total)}"]
+            remaining = total - done
+            if rate > 0 and remaining > 0:
+                eta = int(remaining / rate)
+                parts.append(f"about {eta // 60}m {eta % 60}s left"
+                             if eta >= 60 else f"about {eta}s left")
+        if rate > 0:
+            parts.append(f"{self._human_bytes(rate)}/s")
+        self.dl_label.configure(text="  ·  ".join(parts))
 
     # ========== SETTINGS PANEL ==========
     def _build_settings_panel(self):
@@ -1442,8 +1513,33 @@ class RAGApp(tk.Tk):
         else:
             self.ctx_entry.configure(state="disabled")
 
+    @staticmethod
+    def _safe_ctx_for(vram_gb, model_name):
+        """Largest context that keeps weights + KV cache inside VRAM.
+
+        KV cache is quantized to q8_0, which halves it versus fp16. For
+        Qwen2.5 the cache costs roughly 0.09 GB per 1024 tokens at 14B and
+        scales down with model size. Returns None when we cannot tell.
+        """
+        if not vram_gb or not model_name:
+            return None
+        weights = {"14B": 9.0, "7B": 4.4, "3B": 2.1, "1.5B": 1.1}
+        per_1k = {"14B": 0.094, "7B": 0.055, "3B": 0.043, "1.5B": 0.035}
+        tag = next((t for t in weights if t.lower() in model_name.lower()), None)
+        if tag is None:
+            return None
+        # Leave 1 GB for compute buffers and the desktop.
+        free = vram_gb - weights[tag] - 1.0
+        if free <= 0:
+            return 2048
+        tokens = int((free / per_1k[tag]) * 1024)
+        for step in (32768, 16384, 8192, 4096, 2048):
+            if tokens >= step:
+                return step
+        return 2048
+
     def _load_context_setting(self):
-        """Reflect the saved override in the widgets."""
+        """Reflect the saved override, and report what is actually running."""
         try:
             import config
             current = config.load_context_override()
@@ -1456,15 +1552,41 @@ class RAGApp(tk.Tk):
             self.ctx_entry.configure(state="normal")
             self.ctx_entry.delete(0, "end")
             self.ctx_entry.configure(state="disabled")
-            self.ctx_status.configure(text="Currently: auto-sized to fit your GPU.",
-                                      fg=FG_DIM)
+            saved_text = "Auto-sized to fit your GPU."
         else:
             self.ctx_mode.set("custom")
             self.ctx_entry.configure(state="normal")
             self.ctx_entry.delete(0, "end")
             self.ctx_entry.insert(0, str(current))
-            self.ctx_status.configure(text=f"Currently: {current} tokens (custom).",
-                                      fg=FG_DIM)
+            saved_text = f"Custom: {current} tokens."
+        self.ctx_status.configure(text=saved_text, fg=FG_DIM)
+
+        # Fetch the live value so the user does not have to read the console
+        # to find out what context the model actually loaded with.
+        def do():
+            payload = api_get("/api/models")
+            if not isinstance(payload, dict):
+                return
+            st = payload.get("status") or {}
+            live = st.get("context_window")
+            vram = st.get("vram_gb")
+            model = st.get("current_model") or ""
+            if not live:
+                return
+            bits = [saved_text, f"Running now: {live} tokens."]
+            headroom = self._safe_ctx_for(vram, model)
+            if headroom and vram:
+                if headroom > live:
+                    bits.append(f"Your {vram} GB GPU could handle about "
+                                f"{headroom} with this model.")
+                elif headroom < live:
+                    bits.append(f"Warning: about {headroom} is what your "
+                                f"{vram} GB GPU fits comfortably. Above that "
+                                f"it spills to system RAM and slows down.")
+            text = "  ".join(bits)
+            self.after(0, lambda: self.ctx_status.configure(text=text, fg=FG_DIM))
+
+        threading.Thread(target=do, daemon=True).start()
 
     def _save_context_setting(self):
         """Validate and persist. Bad input gets a message, never a crash."""

@@ -89,7 +89,15 @@ class RagSearchTool:
         rerank = True if rerank is None else bool(rerank)
 
         if self.store.size == 0:
-            return {"chunks": [], "note": "No documents indexed."}
+            # First-run state. Tell the model what to say instead of leaving
+            # it to invent an explanation for the empty result.
+            return {
+                "chunks": [],
+                "note": "No documents have been added yet. Tell the user they "
+                        "can add files in the Docs tab, or drop them into the "
+                        "data/docs folder and click RE-INDEX. Everything they "
+                        "add stays on this machine.",
+            }
 
         # Stage 1: pull a wider candidate pool than the final top_k so the
         # cross-encoder has something useful to rerank.

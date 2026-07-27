@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 import ipaddress
 from pathlib import Path
@@ -567,6 +568,42 @@ async def api_model_unload():
     return JSONResponse({"status": "ok"})
 
 
+
+def _remote_file_size(repo_id: str, filename: str) -> int | None:
+    """Total byte size of a repo file, or None if the API cannot say.
+
+    Used so the download bar can show a real percentage instead of a
+    spinner. Never fatal: a missing size just means an indeterminate bar.
+    """
+    try:
+        from huggingface_hub import get_hf_file_metadata, hf_hub_url
+        meta = get_hf_file_metadata(hf_hub_url(repo_id=repo_id, filename=filename))
+        return int(meta.size) if meta.size else None
+    except Exception:
+        return None
+
+
+def _downloaded_bytes(target: Path) -> int:
+    """Bytes on disk for an in-flight or finished download.
+
+    huggingface_hub writes to a `.incomplete` scratch file and only moves
+    it into place at the end, so during the download the destination does
+    not exist yet and we have to total the scratch files instead.
+    """
+    try:
+        if target.exists():
+            return target.stat().st_size
+        total = 0
+        for scratch in MODELS_DIR.rglob("*.incomplete"):
+            try:
+                total += scratch.stat().st_size
+            except OSError:
+                continue
+        return total
+    except OSError:
+        return 0
+
+
 @app.post("/api/models/download")
 async def api_model_download(request: Request):
     """Two-phase download: first call (no `confirmed`) returns 409 with
@@ -595,19 +632,44 @@ async def api_model_download(request: Request):
         }, status_code=409)
 
     async def stream():
+        total_bytes = await asyncio.to_thread(
+            _remote_file_size, info["repo"], filename)
         yield "data: " + json.dumps({
             "type": "start", "filename": filename, "name": info["name"],
             "size": info["size"], "repo": info["repo"],
+            "total_bytes": total_bytes,
         }) + "\n\n"
         try:
             from huggingface_hub import hf_hub_download
             MODELS_DIR.mkdir(parents=True, exist_ok=True)
-            local_path = await asyncio.to_thread(
+            target = MODELS_DIR / filename
+
+            task = asyncio.create_task(asyncio.to_thread(
                 hf_hub_download,
                 repo_id=info["repo"],
                 filename=filename,
                 local_dir=str(MODELS_DIR),
-            )
+            ))
+
+            # Poll the growing file so the UI can show real progress.
+            # hf_hub_download has no progress callback we can hook, and its
+            # tqdm bar only reaches the console, which is why the app looked
+            # frozen while the terminal was clearly busy.
+            last_emit = 0.0
+            while not task.done():
+                await asyncio.sleep(0.5)
+                now = time.monotonic()
+                if now - last_emit < 0.5:
+                    continue
+                last_emit = now
+                done_bytes = await asyncio.to_thread(_downloaded_bytes, target)
+                payload = {"type": "progress", "downloaded_bytes": done_bytes}
+                if total_bytes:
+                    payload["total_bytes"] = total_bytes
+                    payload["percent"] = round(100 * done_bytes / total_bytes, 1)
+                yield "data: " + json.dumps(payload) + "\n\n"
+
+            local_path = await task
             audit_log("model.download", status="ok", input_summary=filename,
                       detail={"repo": info["repo"]})
             yield "data: " + json.dumps({"type": "done", "path": local_path}) + "\n\n"

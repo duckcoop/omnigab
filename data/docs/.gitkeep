@@ -1,0 +1,8 @@
+# This folder is where your documents go.
+#
+# Drop PDFs, Markdown, text, config, or log files here (or use the Docs tab),
+# then click RE-INDEX. Everything you add is indexed into a vector store on
+# this machine and never leaves it.
+#
+# This placeholder exists only so the folder survives a fresh clone. Git does
+# not track empty directories.

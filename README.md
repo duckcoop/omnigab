@@ -109,7 +109,7 @@ The desktop window is organized into tabs:
 
    Setup finds a real Python, creates the `venv` virtual environment, updates pip, detects your GPU, installs `llama-cpp-python` with the matching CUDA wheel, wires in the CUDA runtime DLLs, installs the remaining dependencies and the Playwright browser, downloads the default model, builds the document index, and launches the app. The first run downloads a few GB, so give it several minutes. Later runs reuse everything and start quickly.
 
-3. **Launch any time.** After the first setup, double click `omnigab.bat` to open the desktop app. Use `start.bat` for the browser UI at `http://localhost:8080`, or `start.bat --terminal` for a plain terminal chat.
+3. **Launch any time.** After the first setup, double click `omnigab.bat`. That is the only thing you need to run.
 
 ---
 
@@ -130,12 +130,12 @@ Pick a model in the Models tab. Larger models answer better and use tools more r
 
 ```
 omnigab/
-├── setup.bat              One click installer and launcher (Windows)
-├── omnigab.bat            Opens the desktop app after setup
-├── start.bat              Launches the web UI or terminal chat
-├── desktop_app.py         Native tkinter desktop app (default entry point)
-├── launcher.py            Alternate browser app mode launcher
+├── setup.bat              One click installer, run this first (Windows)
+├── omnigab.bat            Opens the app, run this every time after
+├── desktop_app.py         The desktop app itself (tkinter)
 ├── requirements.txt
+│
+├── docs/                  Setup guide, skill authoring notes, deferred work
 │
 ├── src/
 │   ├── core/              Agent loop, model manager, tool protocol

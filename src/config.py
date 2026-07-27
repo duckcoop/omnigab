@@ -64,7 +64,10 @@ AVAILABLE_MODELS = {
     },
 }
 MODELS_DIR = PROJECT_ROOT.parent / "models"
-DEFAULT_GGUF_MODEL = "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+# Must match what setup.bat actually downloads. A first run that defaults
+# to a model the installer never fetched leaves a new user staring at a
+# "model not downloaded" error before they have typed anything.
+DEFAULT_GGUF_MODEL = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 
 
 def _load_selected_model() -> str:
@@ -74,9 +77,27 @@ def _load_selected_model() -> str:
             with open(MODEL_STATE_PATH, "r", encoding="utf-8") as f:
                 state = json.load(f)
             filename = state.get("filename", "")
-            if filename in AVAILABLE_MODELS:
+            # Only honour the saved choice if the file is still on disk.
+            # Otherwise a deleted or half-downloaded model would break
+            # startup with no obvious cause.
+            if filename in AVAILABLE_MODELS and (MODELS_DIR / filename).exists():
                 return filename
     except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    return _first_available_model()
+
+
+def _first_available_model() -> str:
+    """Prefer a model actually present on disk, smallest first.
+
+    A user who deleted a big model, or whose download was interrupted,
+    should still get a working app rather than a hard failure at startup.
+    """
+    try:
+        for filename in AVAILABLE_MODELS:  # dict order is smallest to largest
+            if (MODELS_DIR / filename).exists():
+                return filename
+    except OSError:
         pass
     return DEFAULT_GGUF_MODEL
 
@@ -88,6 +109,49 @@ def save_selected_model(filename: str) -> None:
     MODEL_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(MODEL_STATE_PATH, "w", encoding="utf-8") as f:
         json.dump({"filename": filename}, f, indent=2)
+
+
+CONTEXT_STATE_PATH = MODEL_STATE_PATH.parent / "context_override.json"
+
+# Bounds for the user-adjustable context window. The floor is what the
+# agent needs to hold its system prompt plus a reply; the ceiling is what
+# Qwen2.5 models are trained for. Going past 32768 degrades quality even
+# when the hardware allows it.
+CONTEXT_MIN = 2048
+CONTEXT_MAX = 32768
+
+
+def load_context_override() -> int | None:
+    """User-set context window, or None to auto-size against VRAM."""
+    try:
+        if CONTEXT_STATE_PATH.exists():
+            with open(CONTEXT_STATE_PATH, "r", encoding="utf-8") as f:
+                value = json.load(f).get("n_ctx")
+            if value is None:
+                return None
+            value = int(value)
+            if CONTEXT_MIN <= value <= CONTEXT_MAX:
+                return value
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        pass
+    return None
+
+
+def save_context_override(n_ctx: int | None) -> None:
+    """Persist a context window override. Pass None to restore auto-sizing.
+
+    Raises ValueError if the value is outside the supported range, so the
+    UI can show a real message instead of the model failing to load later.
+    """
+    if n_ctx is not None:
+        n_ctx = int(n_ctx)
+        if not (CONTEXT_MIN <= n_ctx <= CONTEXT_MAX):
+            raise ValueError(
+                f"Context window must be between {CONTEXT_MIN} and {CONTEXT_MAX}."
+            )
+    CONTEXT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(CONTEXT_STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump({"n_ctx": n_ctx}, f, indent=2)
 
 
 GGUF_MODEL_PATH = MODELS_DIR / _load_selected_model()

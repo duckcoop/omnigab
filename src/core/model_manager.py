@@ -14,6 +14,7 @@ import gc
 import os
 import threading
 
+import config
 from config import (
     AVAILABLE_MODELS,
     MODELS_DIR,
@@ -235,7 +236,19 @@ def optimal_context(filename: str, vram_gb: int) -> tuple[int, int]:
             batch = 512
         # else: keep profile defaults (large headroom on big GPUs)
 
-    # Env override still wins.
+    # A context window the user set in Settings > Advanced wins over the
+    # VRAM-based estimate. They may know something we don't (a second GPU,
+    # willingness to trade speed for a longer window). We warn rather than
+    # veto, since llama.cpp will spill to system RAM rather than fail.
+    override = config.load_context_override()
+    if override is not None:
+        if vram_gb > 0 and override > ctx:
+            print(f"[model] context override {override} exceeds the {ctx} "
+                  f"estimate for {vram_gb} GB VRAM. Expect slower generation "
+                  f"if the KV cache spills to system RAM.")
+        ctx = override
+
+    # Env override still wins over everything, for scripted runs.
     ctx = _env_int("RAG_CONTEXT_WINDOW", ctx)
     batch = _env_int("RAG_N_BATCH", batch)
     return ctx, batch
@@ -262,7 +275,19 @@ class ModelManager:
             raise ValueError(f"Unknown model: {filename}")
         path = MODELS_DIR / filename
         if not path.exists():
-            raise FileNotFoundError(f"Model file not downloaded: {filename}")
+            # This message is the first thing a new user sees if setup did
+            # not finish. Say what is wrong and exactly what to do next.
+            label = AVAILABLE_MODELS[filename].get("name", filename)
+            size = AVAILABLE_MODELS[filename].get("size", "")
+            raise FileNotFoundError(
+                f"{label} is not downloaded yet.\n\n"
+                f"Expected it here:\n  {path}\n\n"
+                f"To fix this, either:\n"
+                f"  1. Open the Models tab and click Download ({size}), or\n"
+                f"  2. Re-run setup.bat, which downloads the default model.\n\n"
+                f"If setup.bat stopped early, it was most likely a network "
+                f"interruption. Running it again resumes safely."
+            )
 
         with self._lock:
             self._unload_locked()

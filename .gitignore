@@ -36,6 +36,15 @@ __pycache__/
 # Local agent config (not for distribution)
 .claude/
 
+# Scratch notes and working files. These are workflow artifacts, not part
+# of the project, and they should never reach the repo.
+COMMIT-THESE.md
+PRIVACY-CHECK.md
+FINDINGS.md
+NOTES.md
+TODO-scratch.md
+*.scratch.md
+
 # Environment
 .env
 venv/

@@ -238,53 +238,14 @@ block per response, not one per job.
 
 ## Format — REQUIRED four lines per job
 
-For EACH job in `results`, output exactly four lines in this order, then \
-one blank line:
+Job search results are rendered for you.
 
-  Line 1: `**<title>** — <agency> · <location> · <salary>`
-  Line 2: `Match: <match_percent>% · Series <series_code>`  ← ALWAYS include this line
-  Line 3: `Why this fits: <one sentence citing certs / Pathways / requirement bridged>`
-  Line 4: `[Apply on USAJOBS](<url>)`
-
-Field rules:
-  * If `location` is missing or empty string, write `(anywhere)`.
-  * If `salary` is missing or empty string, write `(salary not listed)`.
-  * For `match_percent`: read the field value literally.
-      - If the field is a number (any integer 0–100, including 0), write
-        EXACTLY that number followed by `%`. Example: field=20 → write
-        `Match: 20%`.
-      - Write `Match: n/a` ONLY when the field is literally `null` /
-        missing from the JSON. A value of 0 is NOT null; write `Match: 0%`.
-  * If `cert_matches` is non-empty, ADD a line BEFORE the Apply link: \
-    `Certs matched: <comma-separated list>`.
-  * If `missing_certs` or `missing_skills` or `missing_clearance` is \
-    non-empty, ADD a single `Gap:` line BEFORE the Apply link summarizing \
-    what the user lacks. Format:
-        `Gap: certs <a, b>  ·  clearance <X>  ·  skills <a, b, c>`
-    Omit segments whose field is empty/null. This is the most actionable \
-    line for the user — never skip it when gap data is present.
-
-The literal `Match:` line is REQUIRED for every job — do not skip it.
-
-The link label MUST be exactly `Apply on USAJOBS` — do not insert any \
-prefix character.
-
-## URL grounding — copy-byte-for-byte rule (CRITICAL)
-
-For EACH job, copy its `url` field BYTE-FOR-BYTE from that specific job's \
-tool-result entry. Do NOT:
-  * Reuse the first job's URL for subsequent jobs (template collapse).
-  * Modify any character of the URL.
-  * Invent a URL that "looks right" (e.g. https://www.usajobs.gov/job/<random>).
-  * Drop the URL and write "(link)" or similar.
-
-Every job in `results` has its own unique `url`. They differ. When you \
-write Job 1, look at `results[0].url`. When you write Job 2, look at \
-`results[1].url`. They MUST be different strings. If two of your output \
-links are identical, you have hallucinated and broken the contract.
-
-The same byte-for-byte rule applies to `title`, `agency`, `match_percent`, \
-and `cert_matches`. Each job's fields come from THAT job's entry.
+When `usajobs_search` returns, the posting list (titles, agencies, match
+percentages, and verified apply links) is formatted deterministically in
+Python and appended below your reply. Do NOT list the jobs yourself and do
+NOT write any URLs. Write one or two sentences of useful commentary, for
+example which posting is the strongest fit and why, or what gap shows up
+across several of them. Then stop.
 
 ## When calling usajobs_search — location field
 
@@ -298,6 +259,9 @@ full forms ONLY:
     DC-metro by default anyway.
 
 Truncating "Washington DC" to "Wash" zeroes out the search."""
+
+
+from core import job_renderer
 
 
 TOOL_CALL_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
@@ -464,12 +428,34 @@ class Agent:
                       detail={"error": str(exc), "type": exc.__class__.__name__})
             return ToolResult(name=call.name, ok=False, output=None, error=str(exc))
 
+    # Tools whose results are rendered deterministically in Python. The
+    # model receives only a compact, URL-free digest of these, because it
+    # never has to reproduce their fields.
+    RENDERED_TOOLS = {"usajobs_search"}
+
     def _observation_payload(self, result: ToolResult) -> str:
+        if (result.ok and result.name in self.RENDERED_TOOLS
+                and isinstance(result.output, dict)):
+            digest = job_renderer.summarize_for_model(result.output)
+            if digest:
+                # ~200 tokens instead of ~3000, and no URLs to copy wrong.
+                return digest
         payload = {"ok": result.ok, "output": result.output, "error": result.error}
         text = json.dumps(payload, default=str, ensure_ascii=False)
         if len(text) > MAX_OBSERVATION_CHARS:
             text = text[:MAX_OBSERVATION_CHARS] + " …(truncated)"
         return text
+
+    def _rendered_blocks(self, results: list[ToolResult]) -> str:
+        """Deterministic markdown for every rendered tool result this turn."""
+        blocks = []
+        for result in results:
+            if (result.ok and result.name in self.RENDERED_TOOLS
+                    and isinstance(result.output, dict)):
+                block = job_renderer.render_results(result.output)
+                if block:
+                    blocks.append(block)
+        return "\n\n".join(blocks)
 
     # ----- synchronous turn (tests, CLI) ------------------------------
 
@@ -510,6 +496,12 @@ class Agent:
             turn.answer = (_strip_tool_artifacts(last_raw).strip()
                            or "(stopped: tool hop limit reached)")
 
+        rendered = self._rendered_blocks(turn.tool_results)
+        if rendered:
+            # The list itself is built from the verified tool output, not
+            # transcribed by the model. Model prose (if any) sits above it.
+            turn.answer = f"{turn.answer}\n\n{rendered}".strip()
+
         stats = gen.get_last_stats() if hasattr(gen, "get_last_stats") else {}
         turn.tokens = int(stats.get("tokens", 0))
         turn.tps = float(stats.get("tps", 0.0))
@@ -537,6 +529,7 @@ class Agent:
             return
 
         scratch: list[dict] = []
+        stream_results: list[ToolResult] = []
         full_answer = ""
         t0 = time.time()
 
@@ -580,6 +573,7 @@ class Agent:
 
             yield {"type": "tool_start", "name": call.name, "arguments": call.arguments}
             result = await asyncio.to_thread(self._dispatch, call)
+            stream_results.append(result)
             preview = self._observation_payload(result)
             yield {"type": "tool_end", "name": call.name, "ok": result.ok,
                    "preview": preview[:400]}
@@ -588,6 +582,12 @@ class Agent:
             scratch.append({"role": "tool", "name": call.name, "content": preview})
         else:
             yield {"type": "token", "text": "\n[stopped: tool hop limit reached]"}
+
+        rendered = self._rendered_blocks(stream_results)
+        if rendered:
+            block = f"\n\n{rendered}"
+            yield {"type": "token", "text": block}
+            full_answer = f"{full_answer}{block}".strip()
 
         stats = gen.get_last_stats() if hasattr(gen, "get_last_stats") else {}
         self.history.append({"role": "user", "content": user_msg})

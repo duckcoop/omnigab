@@ -1372,6 +1372,55 @@ class RAGApp(tk.Tk):
         self.mem_display.tag_configure("key", foreground=CYAN)
         self.mem_display.tag_configure("val", foreground=FG_BRIGHT)
 
+        # ---------------- Advanced ----------------
+        tk.Label(frame, text="# ADVANCED", fg=GREEN, bg=BG,
+                 font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", padx=16, pady=(16, 4))
+        tk.Label(frame,
+                 text="Context window: how much the model can hold at once "
+                      "(prompt + documents + reply).",
+                 fg=FG_DIM, bg=BG, font=FONT_SM, anchor="w",
+                 wraplength=620, justify="left").pack(fill="x", padx=16, pady=(0, 2))
+        tk.Label(frame,
+                 text="Auto picks the largest size that fits your GPU. Raise it to "
+                      "work with longer documents, at the cost of speed and memory. "
+                      "Takes effect the next time the model loads.",
+                 fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w",
+                 wraplength=620, justify="left").pack(fill="x", padx=16, pady=(0, 8))
+
+        ctx_frame = tk.Frame(frame, bg=BG)
+        ctx_frame.pack(fill="x", padx=16, pady=4)
+
+        self.ctx_mode = tk.StringVar(value="auto")
+        tk.Radiobutton(ctx_frame, text="Auto (recommended)", variable=self.ctx_mode,
+                       value="auto", bg=BG, fg=FG, font=FONT_XS, selectcolor=BG,
+                       activebackground=BG, activeforeground=GREEN,
+                       command=self._on_ctx_mode_change).pack(side="left")
+        tk.Radiobutton(ctx_frame, text="Custom:", variable=self.ctx_mode,
+                       value="custom", bg=BG, fg=FG, font=FONT_XS, selectcolor=BG,
+                       activebackground=BG, activeforeground=GREEN,
+                       command=self._on_ctx_mode_change).pack(side="left", padx=(12, 0))
+
+        self.ctx_entry = tk.Entry(ctx_frame, bg=BG, fg=FG_BRIGHT, font=FONT_SM, width=8,
+                                  insertbackground=GREEN, borderwidth=1,
+                                  highlightbackground=BORDER, state="disabled")
+        self.ctx_entry.pack(side="left", padx=4, ipady=3)
+        tk.Label(ctx_frame, text="tokens", fg=FG_DIM, bg=BG,
+                 font=FONT_XS).pack(side="left")
+        tk.Button(ctx_frame, text="SAVE", bg=BG, fg=GREEN, font=FONT_XS,
+                  command=self._save_context_setting,
+                  borderwidth=1, padx=8).pack(side="left", padx=8)
+
+        self.ctx_status = tk.Label(frame, text="", fg=FG_DIM, bg=BG, font=FONT_XS,
+                                   anchor="w", wraplength=620, justify="left")
+        self.ctx_status.pack(fill="x", padx=16, pady=(2, 0))
+
+        tk.Label(frame,
+                 text="Guide:  4096 = short chats  ·  8192 = default  ·  "
+                      "16384 = long documents  ·  32768 = maximum",
+                 fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w").pack(fill="x", padx=16, pady=(4, 0))
+
+        self._load_context_setting()
+
         btn_f = tk.Frame(frame, bg=BG)
         btn_f.pack(fill="x", padx=16, pady=8)
         tk.Button(btn_f, text="REFRESH", bg=BG, fg=FG, font=FONT_XS,
@@ -1380,6 +1429,80 @@ class RAGApp(tk.Tk):
                   command=self._clear_memory, borderwidth=1, padx=8).pack(side="left", padx=8)
         tk.Button(btn_f, text="CLEAR HISTORY", bg=BG, fg=RED, font=FONT_XS,
                   command=self._clear_history, borderwidth=1, padx=8).pack(side="left")
+
+    # ---------------- Advanced: context window ----------------
+
+    def _on_ctx_mode_change(self):
+        """Enable the entry only in custom mode, and prefill a sane default."""
+        if self.ctx_mode.get() == "custom":
+            self.ctx_entry.configure(state="normal")
+            if not self.ctx_entry.get().strip():
+                self.ctx_entry.insert(0, "8192")
+            self.ctx_entry.focus_set()
+        else:
+            self.ctx_entry.configure(state="disabled")
+
+    def _load_context_setting(self):
+        """Reflect the saved override in the widgets."""
+        try:
+            import config
+            current = config.load_context_override()
+        except Exception as exc:
+            self.ctx_status.configure(text=f"Could not read setting: {exc}", fg=RED)
+            return
+
+        if current is None:
+            self.ctx_mode.set("auto")
+            self.ctx_entry.configure(state="normal")
+            self.ctx_entry.delete(0, "end")
+            self.ctx_entry.configure(state="disabled")
+            self.ctx_status.configure(text="Currently: auto-sized to fit your GPU.",
+                                      fg=FG_DIM)
+        else:
+            self.ctx_mode.set("custom")
+            self.ctx_entry.configure(state="normal")
+            self.ctx_entry.delete(0, "end")
+            self.ctx_entry.insert(0, str(current))
+            self.ctx_status.configure(text=f"Currently: {current} tokens (custom).",
+                                      fg=FG_DIM)
+
+    def _save_context_setting(self):
+        """Validate and persist. Bad input gets a message, never a crash."""
+        try:
+            import config
+        except Exception as exc:
+            self.ctx_status.configure(text=f"Could not load config: {exc}", fg=RED)
+            return
+
+        if self.ctx_mode.get() == "auto":
+            try:
+                config.save_context_override(None)
+            except Exception as exc:
+                self.ctx_status.configure(text=f"Could not save: {exc}", fg=RED)
+                return
+            self.ctx_status.configure(
+                text="Saved. Auto-sizing restored. Reload the model to apply.",
+                fg=GREEN)
+            return
+
+        raw = self.ctx_entry.get().strip()
+        if not raw.isdigit():
+            self.ctx_status.configure(
+                text="Enter a whole number of tokens, for example 8192.", fg=RED)
+            return
+
+        try:
+            config.save_context_override(int(raw))
+        except ValueError as exc:
+            self.ctx_status.configure(text=str(exc), fg=RED)
+            return
+        except Exception as exc:
+            self.ctx_status.configure(text=f"Could not save: {exc}", fg=RED)
+            return
+
+        self.ctx_status.configure(
+            text=f"Saved: {raw} tokens. Reload the model in the Models tab to apply.",
+            fg=GREEN)
 
     def _set_memory(self):
         k, v = self.mem_key.get().strip(), self.mem_val.get().strip()

@@ -26,6 +26,29 @@ from security import audit_log, validate_query, ValidationError
 SYSTEM_PROMPT = """You are omnigab, a local autonomous assistant. You have tools. \
 You act by calling tools. You do not narrate intentions — you execute.
 
+## What you are — answer questions about this accurately
+
+You run entirely on the user's own computer. The model generating these words \
+is a GGUF file loaded through llama.cpp on their hardware. There is no server, \
+no account, and no API key. You were not trained by and are not hosted by \
+OpenAI, Anthropic, or Google. Never claim to be ChatGPT, Claude, or Gemini.
+
+State these facts confidently when asked about privacy or security:
+  * Nothing typed here is uploaded anywhere. There is no cloud backend.
+  * Documents added in the Docs tab are indexed into a vector store on this \
+    machine and never leave it.
+  * Memory is a local SQLite file on this machine.
+  * The only network activity is user-initiated: web search, job board \
+    lookups, CVE lookups, and downloading a model. Turn web search off and \
+    the app works with no network at all.
+
+Private and sensitive documents are precisely what this software is built \
+for. Never advise the user to avoid adding personal, financial, medical, or \
+confidential files, and never suggest the data would be safer elsewhere. \
+That advice is false here and defeats the purpose of running locally. If the \
+user asks whether their files are safe to add, the answer is yes, and the \
+reason is that the files never leave their computer.
+
 # The single most important rule
 If the user asks you to DO something that requires a tool, your VERY FIRST tokens \
 in the response must be `<tool_call>`. Do not write any prose first. Do not say \
@@ -345,7 +368,17 @@ class Agent:
         return "\n".join(lines)
 
     def _build_messages(self, user_msg: str, scratch: list[dict]) -> list[dict]:
-        system = SYSTEM_PROMPT + "\n\nAvailable tools:\n" + self._tool_catalog()
+        system = SYSTEM_PROMPT
+
+        # Tell the model which weights it is actually running, so "what model
+        # are you" gets a true answer instead of a guess from training data.
+        model_name = getattr(self.mm, "current_model_name", "") or ""
+        if model_name:
+            system += (f"\n\nThe model file you are running right now is "
+                       f"`{model_name}`, loaded locally via llama.cpp. "
+                       f"Give this name if asked which model you are.")
+
+        system += "\n\nAvailable tools:\n" + self._tool_catalog()
 
         # User prefs from the legacy JSON store.
         try:

@@ -568,7 +568,6 @@ async def api_model_unload():
     return JSONResponse({"status": "ok"})
 
 
-
 def _remote_file_size(repo_id: str, filename: str) -> int | None:
     """Total byte size of a repo file, or None if the API cannot say.
 

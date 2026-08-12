@@ -8,7 +8,6 @@ and returns results as Chunk objects for the RAG pipeline.
 No API keys required.
 """
 
-import time
 import re
 
 from ingest import Chunk

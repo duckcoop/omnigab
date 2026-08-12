@@ -46,13 +46,6 @@ Each item was considered and explicitly deferred — not forgotten.
 - **Context:** Found during PR0 while verifying a clean venv install, which succeeds when `--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu` is passed and fails without it. Options for PR2, none free: add that index to the workflow's pip invocation; or move `llama-cpp-python` to an optional extra so the offline test suite installs without it, which suits a default `pytest` run that already needs no model. The second is cleaner and touches `pyproject.toml` only, but it is a dependency-shape decision, not a packaging mechanics one, so PR0 left it alone.
 - **Blocked by:** nothing. Decide it as part of PR2 rather than discovering it in a red CI run.
 
-## `flake8 src tests` is not clean, and never has been
-
-- **What:** 63 findings at the PR0 commit, unchanged by PR0 itself (verified by diffing flake8 output before and after). Mostly `F401` unused imports and `E127` continuation-line indentation, concentrated in `src/tools/usajobs_search.py` (28), `src/tools/resume_intel.py`, `src/rag_agent.py`, `src/demo_ui.py`, and `src/job_agent.py`. Three are in `tests/test_omnigab.py`.
-- **Why:** AGENTS.md section 4 and section 7 both present a clean flake8 as the current state, and `verify.bat` gates on it. Both are wrong today, so the gate is unusable as written and the first person to trust it gets a false failure.
-- **Context:** Found during PR0 while checking whether the packaging change introduced lint. It did not. Fixing 63 findings across 15 files inside a packaging PR would have made the diff unreviewable, which is why this is written down rather than folded in. `F811` in `usajobs_search.py` (json, os, time each imported twice) and `F841` in `job_agent.py` are worth a real look; the rest is mechanical.
-- **Blocked by:** nothing. Best done as its own commit, ideally right before PR2 so CI turns green on its first run rather than its fifth.
-
 ## `tests/test_usajobs.py` computes the repo root one level too high
 
 - **What:** Line 24 is `ROOT = Path(__file__).resolve().parent`, which resolves to `tests/`, not the repo root. `SRC = ROOT / "src"` therefore points at `tests/src`, which does not exist, and `os.chdir(str(SRC))` at line 61 raises `FileNotFoundError` before the tool is ever called. The other three test files use `.parent.parent` correctly.
@@ -66,6 +59,20 @@ Each item was considered and explicitly deferred — not forgotten.
 - **Why:** A collision would surface as an import resolving to somebody else's module, which fails confusingly and far from its cause. Today the app owns its venv, so nothing collides; it becomes real the moment omnigab is installed alongside anything else.
 - **Context:** The fix is an `omnigab.` namespace, which means rewriting every intra-module import (`from core.model_manager import ...` becomes `from omnigab.core.model_manager import ...`) across roughly 45 files. That was an explicit non-goal for PR0 precisely because mixing a rename that size into the packaging change makes both unreviewable.
 - **Blocked by:** nothing technical. Wants to land alone, after PR1 so the test suite can prove nothing broke.
+
+## `scripts/deploy.py` lints a wider target set that is still red, including three real bugs
+
+- **What:** `LINT_TARGETS = ["src", "scripts", "desktop_app.py"]` at `scripts/deploy.py:28`, which is not the `src tests` that `verify.bat`, `verify.sh`, and AGENTS.md section 7 all use. PR0a took that wider set from 111 findings to 51, because it cleaned `src` but never touched the other two targets. All 51 residuals are in `desktop_app.py` (46) and `scripts/job_watcher.py` (5): 22 E127, 9 E231, 6 E306, 5 E702, 3 F841, 3 F821, 1 F811, 1 E401, 1 E128.
+- **Why:** Two reasons, and the second is the real one. First, `deploy.py --auto/--commit/--push` refuses to proceed unless `--force` is passed, so "flake8 is clean now" is only true of the gate in AGENTS.md, not of the gate in the deploy path. Second, the three F821s are live bugs, not lint: `desktop_app.py:1065`, `:1122`, and `:1344` each build a `lambda` that reads the `except ... as <name>` variable, but Python unbinds that name when the except block exits, and the lambda does not run until `self.after(0, ...)` fires it on the Tk event loop. Every one of them raises `NameError` at the exact moment it is supposed to show the user an error message, so the failure path is louder and less informative than the failure it was reporting. `desktop_app.py:1340` already has the correct form (`lambda m=msg:`) four lines above one of them.
+- **Context:** Found during PR0a by running flake8 over `deploy.py`'s target list rather than the task's. Not fixed there because `desktop_app.py` and `scripts/` were outside the stated scope, and because the F821 fixes are behavior changes: each one turns a crashing error handler into a working one, which needs a test and does not belong in a diff whose whole claim is that behavior is unchanged.
+- **Blocked by:** nothing. The three F821s deserve their own small PR ahead of the cosmetic remainder, since they are the only findings in this repository that are bugs rather than formatting.
+
+## AGENTS.md section 3 still describes the pre-PR0 packaging state
+
+- **What:** Two bullets under "Known structural problems" were made false by PR0 and are still there. "`src/` is not an installable package ... There is no `pyproject.toml` and no `setup.py`" is wrong on both counts. "Requirements are entirely unpinned" is wrong: `pyproject.toml` pins every runtime dependency to a compatible-release range. The repository map at the top of the same section also still lists `requirements.txt  unpinned, all >=`.
+- **Why:** AGENTS.md is loaded into every agent's context automatically and its own section 4 says an AGENTS.md that lies is worse than none. An agent reading these bullets would re-derive a packaging problem that is already solved, or avoid touching imports for a reason that no longer holds.
+- **Context:** Found during PR0a while checking section 3 for a red-flake8 bullet to remove (there was none, so PR0a changed nothing there). Not fixed in PR0a because it is PR0's documentation debt, not lint, and section 9 says to write an unrelated finding down rather than fold it in. The `sys.path.insert` half of the first bullet is genuinely stale too, since PR0's acceptance criteria required removing those lines.
+- **Blocked by:** nothing. A few minutes of editing, best folded into whichever PR next touches AGENTS.md section 3.
 
 ## Migrate legacy test harness to pytest
 - **What:** Port `tests/test_omnigab.py`'s subsystem checks (db, scraper, resume-builder, python-eval, cve) to pytest.

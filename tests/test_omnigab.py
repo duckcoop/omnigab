@@ -214,7 +214,7 @@ def check_python_eval(rep: Reporter):
     if (not r.get("ok")) and "network access disabled" in r.get("stderr", ""):
         rep.ok("network blocked")
     else:
-        rep.fail("network blocked", f"stderr={r.get('stderr','')[:200]}")
+        rep.fail("network blocked", f"stderr={r.get('stderr', '')[:200]}")
 
     rep.step("timeout fires")
     r = tool.run({"code": "import time; time.sleep(60)", "timeout_s": 2})
@@ -295,7 +295,7 @@ def check_scraper(rep: Reporter, max_jobs: int):
 
     rep.step("verifying all URLs are absolute USAJOBS posting URLs")
     bad = [j.get("url", "") for j in r.get("results", [])
-            if not (j.get("url", "").startswith("https://www.usajobs.gov/job/"))]
+           if not (j.get("url", "").startswith("https://www.usajobs.gov/job/"))]
     if bad:
         rep.fail("URL shape", f"{len(bad)} malformed URLs: {bad[:3]}")
     else:
@@ -310,7 +310,7 @@ def check_scraper(rep: Reporter, max_jobs: int):
 
     rep.step("verifying job-side cert/clearance fields surfaced")
     saw_required = any("required_certs" in j or "clearance_required" in j
-                        for j in r.get("results", []))
+                       for j in r.get("results", []))
     if saw_required or found == 0:
         rep.ok("job cert/clearance extraction",
                "at least one job carried required_certs or clearance_required"

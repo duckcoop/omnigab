@@ -10,13 +10,11 @@ leverages the RAG pipeline's generator to evaluate fit.
 """
 
 import re
-import json
-import time
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Optional
 
-from config import MODELS_DIR, GGUF_MODEL_PATH, DOCS_DIR
+from config import DOCS_DIR
 from url_safety import is_safe_url
 
 try:
@@ -74,7 +72,6 @@ def extract_resume_text(file_path: Path) -> str:
             with zipfile.ZipFile(str(file_path)) as z:
                 xml_content = z.read("word/document.xml")
             tree = ET.fromstring(xml_content)
-            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
             paragraphs = []
             for p in tree.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
                 texts = [t.text for t in p.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t") if t.text]

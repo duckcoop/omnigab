@@ -5,7 +5,6 @@ Central config for all pipeline components. Edit these values to swap models,
 adjust chunk sizes, or tune retrieval parameters.
 """
 
-import os
 import json
 from pathlib import Path
 
@@ -182,4 +181,3 @@ CLAIM_SUPPORT_THRESHOLD = 0.45
 MAX_CORRECTION_ROUNDS = 2
 RETRY_TEMP_BOOST = 0.15
 RETRY_TOPK_BOOST = 2
-

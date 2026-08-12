@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 USER_AGENT = "omnigab/1.0 (local job search; +https://github.com/duckcoop/omnigab)"

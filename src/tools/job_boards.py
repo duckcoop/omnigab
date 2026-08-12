@@ -14,10 +14,8 @@ from typing import Any
 
 from jobs import (
     HANDOFF,
-    AmazonJobs,
     GreenhouseBoard,
     LeverBoard,
-    RemoteOK,
     default_registry,
     search_many,
 )

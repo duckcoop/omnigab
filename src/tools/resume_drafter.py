@@ -255,7 +255,7 @@ class ResumeDrafterTool:
             # 7B handles this task with a lower temperature than the 14B
             # (less drift in the keyword incorporation step).
             draft_md = gen.generate_raw(prompt, max_tokens=1500,
-                                         temperature=0.18)
+                                        temperature=0.18)
         except Exception as exc:
             # Swap back even on failure.
             if original_model and self._mm is not None:
@@ -324,7 +324,7 @@ class ResumeDrafterTool:
             "generation_seconds": round(elapsed, 2),
             "draft_preview": draft_md[:600],
             "model_used": (self._mm.current_model_name
-                            if self._mm else "(no manager)"),
+                           if self._mm else "(no manager)"),
             "swap_note": swap_note,
         }
 
@@ -376,7 +376,7 @@ class ResumeDrafterTool:
 
         # 3) Last-resort scan of data/docs/.
         candidates = (sorted(DATA_DOCS.glob("active_resume.*"))
-                       + sorted(DATA_DOCS.glob("*resume*")))
+                      + sorted(DATA_DOCS.glob("*resume*")))
         for p in candidates:
             try:
                 if p.suffix.lower() in (".txt", ".md"):

@@ -275,8 +275,8 @@ def extract_tech_skills(text: str) -> list[str]:
 
 
 def skills_gap(*, job_text: str, resume_text: str,
-                resume_certs: list[str] | None = None,
-                resume_clearance: str | None = None) -> dict:
+               resume_certs: list[str] | None = None,
+               resume_clearance: str | None = None) -> dict:
     """Compute the gap between what the posting wants and what the user has.
 
     Returns a dict with:
@@ -312,7 +312,7 @@ def skills_gap(*, job_text: str, resume_text: str,
     missing_clearance: str | None = None
     if job_clearance and job_clearance not in ("None / Public Trust",):
         user_has = bool(resume_clearance and resume_clearance not in
-                         ("None / Public Trust",))
+                        ("None / Public Trust",))
         if not user_has:
             missing_clearance = job_clearance
 

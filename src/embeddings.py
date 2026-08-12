@@ -52,7 +52,6 @@ if __name__ == "__main__":
     print(f"\nEmbedded {len(test_texts)} texts -> shape {vectors.shape}")
 
     # Test similarity
-    from numpy.linalg import norm
     sim = np.dot(vectors[0], vectors[1])
     print(f"Similarity between text 0 and 1: {sim:.4f}")
     sim2 = np.dot(vectors[0], vectors[2])

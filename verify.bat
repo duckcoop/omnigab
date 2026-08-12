@@ -21,7 +21,6 @@ echo ============================================================
 if errorlevel 1 (
     echo.
     echo [verify] FAILED: flake8
-    echo [verify] Until PR0a lands this reports 63 pre-existing findings.
     exit /b 1
 )
 echo [verify] flake8 clean

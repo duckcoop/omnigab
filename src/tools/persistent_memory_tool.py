@@ -95,7 +95,7 @@ class PersistentMemoryTool:
                 for row in all_rows:
                     if row.get("id") == rid:
                         removed = self.pm.forget(category=row.get("category"),
-                                                  key=row.get("key"))
+                                                 key=row.get("key"))
                         return {"ok": True, "removed": removed}
                 return {"ok": False, "error": f"no row with id {rid}"}
             key = arguments.get("key")
@@ -112,7 +112,7 @@ class PersistentMemoryTool:
                 removed = 0
                 for row in rows:
                     removed += self.pm.forget(category=row.get("category"),
-                                               key=row.get("key"))
+                                              key=row.get("key"))
             return {"ok": True, "removed": removed}
 
         return {"ok": False, "error": f"unknown action: {action}"}

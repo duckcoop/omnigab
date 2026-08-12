@@ -25,9 +25,6 @@ from __future__ import annotations
 
 import json
 import os
-import time
-import json
-import os
 import re
 import sys
 import time
@@ -66,12 +63,12 @@ DATA_DIR = PROJECT_ROOT / "data"
 RESULTS_DIR = DATA_DIR / "usajobs_runs"
 
 
-## --- USAJOBS occupational series ("job categories") ---------------------
-## Federal IT/cyber roles are all under series 2210 (Information Technology
-## Management). Software/CS-leaning roles are under 1550. Filtering by series
-## code is the single most reliable way to narrow USAJOBS results —
-## keyword-only searches return zero hits because postings are titled by
-## series ("IT Specialist (INFOSEC)") not by tech buzzwords.
+# --- USAJOBS occupational series ("job categories") ---------------------
+# Federal IT/cyber roles are all under series 2210 (Information Technology
+# Management). Software/CS-leaning roles are under 1550. Filtering by series
+# code is the single most reliable way to narrow USAJOBS results —
+# keyword-only searches return zero hits because postings are titled by
+# series ("IT Specialist (INFOSEC)") not by tech buzzwords.
 IT_SERIES = "2210"
 CS_SERIES = "1550"
 
@@ -485,9 +482,9 @@ class UsaJobsSearchTool:
     # ----- API mode -----
 
     def _run_via_api(self, query, location, max_jobs, days_ago, entry_level,
-                      series_codes: list[str], api_key, api_email,
-                      user_certs: list[str], raw_query: str,
-                      ai_focus: bool = False) -> dict[str, Any]:
+                     series_codes: list[str], api_key, api_email,
+                     user_certs: list[str], raw_query: str,
+                     ai_focus: bool = False) -> dict[str, Any]:
         params: list[tuple[str, str]] = [
             ("Keyword", query),
             ("ResultsPerPage", str(max_jobs)),
@@ -575,7 +572,7 @@ class UsaJobsSearchTool:
         try:
             artifact = RESULTS_DIR / f"run_{time.strftime('%Y%m%d_%H%M%S')}.json"
             artifact.write_text(json.dumps({"query": query, "results": listings},
-                                            indent=2), encoding="utf-8")
+                                           indent=2), encoding="utf-8")
         except Exception:
             pass
 
@@ -616,10 +613,10 @@ class UsaJobsSearchTool:
         return "https://www.usajobs.gov/Search/Results?" + "&".join(parts)
 
     def _run_via_playwright(self, query, location, max_jobs, days_ago, entry_level,
-                              series_codes: list[str],
-                              user_certs: list[str],
-                              raw_query: str,
-                              ai_focus: bool = False) -> dict[str, Any]:
+                            series_codes: list[str],
+                            user_certs: list[str],
+                            raw_query: str,
+                            ai_focus: bool = False) -> dict[str, Any]:
         """Scrape USAJOBS, then deep-fetch each result's full description and
         STRICTLY enforce series codes by walking additional pages if results
         are filtered out.
@@ -646,7 +643,7 @@ class UsaJobsSearchTool:
         OVERALL_BUDGET_S = 240      # was 90
 
         first_page_url = self._build_url(query, location, days_ago, entry_level,
-                                          series_codes, page_num=1)
+                                         series_codes, page_num=1)
         series_set = {str(c) for c in (series_codes or [])}
         stubs: list[dict] = []
         scanned_cards = 0
@@ -678,8 +675,8 @@ class UsaJobsSearchTool:
                         break
 
                     page_url = self._build_url(query, location, days_ago,
-                                                entry_level, series_codes,
-                                                page_num=page_num)
+                                               entry_level, series_codes,
+                                               page_num=page_num)
                     t0 = time.monotonic()
                     try:
                         # `domcontentloaded` is enough — we just need the
@@ -687,7 +684,7 @@ class UsaJobsSearchTool:
                         # networkidle because USAJOBS keeps polling analytics
                         # endpoints indefinitely.
                         search_page.goto(page_url, wait_until="domcontentloaded",
-                                          timeout=20000)
+                                         timeout=20000)
                         # Wait specifically for the result container to appear.
                         try:
                             search_page.wait_for_selector(
@@ -1013,7 +1010,7 @@ class UsaJobsSearchTool:
             "found": len(slim_results),
             "results": slim_results,
             "ranking": ("ai_designated desc, cert_matches desc, match_percent desc"
-                         if ai_focus else "cert_matches desc, match_percent desc"),
+                        if ai_focus else "cert_matches desc, match_percent desc"),
         }
 
     # Phrases that indicate the posting is no longer accepting applications.
@@ -1281,10 +1278,10 @@ class UsaJobsSearchTool:
         return href
 
     def _run_via_browser_handoff(self, query, location, days_ago, entry_level,
-                                   series_codes: list[str],
-                                   user_certs: list[str],
-                                   raw_query: str,
-                                   ai_focus: bool = False) -> dict[str, Any]:
+                                 series_codes: list[str],
+                                 user_certs: list[str],
+                                 raw_query: str,
+                                 ai_focus: bool = False) -> dict[str, Any]:
         """Build a properly-filtered USAJOBS URL and open it in the user's
         real browser. URL params:
           k     = keywords (sanitized, no cert names)

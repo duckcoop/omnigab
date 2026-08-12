@@ -1,0 +1,128 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnigab"
+version = "0.1.0"
+description = "A private life-admin assistant that runs entirely on your own computer"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Cooper Preston" }]
+# Upper bound is real, not defensive. The prebuilt llama-cpp-python CUDA
+# wheels that setup.bat installs are built for 3.10 through 3.12; on 3.13
+# pip falls back to a source build that needs a compiler most users of this
+# app do not have.
+requires-python = ">=3.10,<3.13"
+
+# Every pin below is a compatible-release range anchored to the version
+# that was actually installed and working when this file was written.
+# The rule: for a package past 1.0 the major is the breaking position, so
+# the ceiling is the next major. For a 0.x package the minor is the
+# breaking position, so the ceiling is the next minor. Exceptions carry
+# their own comment.
+dependencies = [
+    "torch>=2.13,<3.0",
+    "transformers>=5.14,<6.0",
+    "sentence-transformers>=5.6,<6.0",
+    "faiss-cpu>=1.14,<2.0",
+    "langchain-text-splitters>=1.1,<2.0",
+    "numpy>=2.5,<3.0",
+    "accelerate>=1.14,<2.0",
+    # Deliberately loose on the lower bound, unlike everything else here.
+    # setup.bat installs llama-cpp-python FIRST from abetlen's prebuilt CUDA
+    # wheel index, then runs pip install -r requirements.txt. That index
+    # lags PyPI, so a lower bound pinned to the installed patch (0.3.34)
+    # would make pip "upgrade" the GPU wheel to a CPU-only build from PyPI
+    # and silently kill GPU offload. Any 0.3.x is compatible with our usage.
+    "llama-cpp-python>=0.3,<0.4",
+    "colorama>=0.4.6,<0.5.0",
+    "rich>=15.0,<16.0",
+    "ddgs>=9.14,<10.0",
+    "requests>=2.34,<3.0",
+    "beautifulsoup4>=4.15,<5.0",
+    "huggingface-hub>=1.25,<2.0",
+    # FastAPI is pre-1.0 and its own docs tell you to pin the minor, because
+    # breaking changes ship in minors rather than majors.
+    "fastapi>=0.140,<0.141",
+    "uvicorn>=0.51,<0.52",
+    "pymupdf>=1.28,<2.0",
+    "fpdf2>=2.8,<3.0",
+    "psutil>=7.2,<8.0",
+    "playwright>=1.61,<2.0",
+    "docx2txt>=0.9,<0.10",
+
+    # CUDA runtime DLLs for the prebuilt llama-cpp-python CUDA wheel.
+    # These are required on Windows when the system does not have the full
+    # CUDA Toolkit installed. scripts/install_cuda_dlls.py copies them next
+    # to llama.dll after pip install.
+    #
+    # These do not follow semver: the version tracks the CUDA release. The
+    # CUDA major is already baked into the package name (cu12), so the
+    # ceiling stops us drifting onto a CUDA 13 runtime under a cu12 name.
+    "nvidia-cuda-runtime-cu12>=12.9,<13.0; platform_system == 'Windows'",
+    "nvidia-cublas-cu12>=12.9,<13.0; platform_system == 'Windows'",
+    "nvidia-cuda-nvrtc-cu12>=12.9,<13.0; platform_system == 'Windows'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1,<10.0",
+    "pytest-cov>=7.1,<8.0",
+    "flake8>=7.3,<8.0",
+]
+
+# src/ is a flat layout: four packages plus 22 loose top-level modules that
+# import each other by bare name (from core.model_manager import ..., from
+# security import ...). Mapping the root package dir to src/ makes every one
+# of those names importable after install, with no module renamed and no
+# directory moved.
+#
+# Both lists are explicit rather than left to setuptools auto-discovery. The
+# repo root also holds desktop_app.py, scripts/, skills/, and tests/, and
+# auto-discovery on a tree shaped like that either sweeps them in or bails
+# out with "multiple top-level packages discovered".
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = [
+    "core",
+    "extraction",
+    "jobs",
+    "tools",
+]
+py-modules = [
+    "config",
+    "demo_ui",
+    "embeddings",
+    "generator",
+    "ingest",
+    "job_agent",
+    "job_report",
+    "persistent_memory",
+    "rag_agent",
+    "resume_ingest",
+    "security",
+    "skill_base",
+    "skill_memory",
+    "skill_registry",
+    "skill_sandbox",
+    "skill_subprocess_runner",
+    "url_safety",
+    "user_memory",
+    "vectorstore",
+    "verifier",
+    "web_app",
+    "web_search",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: needs a live network connection",
+    "model: needs a real GGUF model file on disk",
+]
+# The default run has to pass on a machine with no GPU, no model file, and
+# no network, because that is what CI has and what a stranger cloning the
+# repo has. Opt back in with: pytest -m integration
+addopts = "-m 'not integration and not model'"

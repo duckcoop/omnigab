@@ -1,7 +1,3 @@
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 """
 Benchmark runner for the RSO-2026 self-evolution loop.
 

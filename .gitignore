@@ -33,6 +33,13 @@ logs/audit.json
 __pycache__/
 *.pyc
 
+# Packaging build artifacts. The editable install writes
+# src/omnigab.egg-info/ next to the package dir, and a wheel build writes
+# build/ and dist/. All three are generated from pyproject.toml.
+*.egg-info/
+build/
+dist/
+
 # Local agent config (not for distribution)
 .claude/
 

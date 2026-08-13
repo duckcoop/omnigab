@@ -42,6 +42,26 @@ TASK
 
 3. Add the workflow status badge to the top of README.md.
 
+4. Decide which flake8 target set CI lints, because the repo currently
+   holds two different answers.
+
+   AGENTS.md sections 4 and 7 and `verify.bat` both say
+   `flake8 src tests`, which is at zero findings after PR0a.
+   `scripts/deploy.py` lints `["src", "scripts", "desktop_app.py"]`,
+   which is still at roughly 51 findings. See the entry in
+   `docs/TODOS.md`.
+
+   Pick one and make every caller agree: the workflow, `verify.bat`,
+   `verify.sh`, `scripts/deploy.py`, and AGENTS.md. Do NOT fix the 51
+   findings in this PR. If you widen the target set, gate CI on the
+   narrow set for now and write the widening up as its own task, so
+   this PR does not turn into a second lint pass.
+
+   Note that three of those 51 are not lint at all. They are the
+   deferred-lambda `NameError` bugs at `desktop_app.py` lines 1065,
+   1122, and 1344, already written up in `docs/TODOS.md`. Leave them
+   alone here.
+
 NON-GOALS
 - No coverage threshold gate yet. The current number is unknown and a
   gate that fails on day one just gets disabled. PR3 adds the gate.

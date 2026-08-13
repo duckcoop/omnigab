@@ -143,6 +143,18 @@ write them. Keeping the diff boring is the point.
   entry.
 - AGENTS.md section 4 is updated to the new commands.
 
+**Status: done**, branch `pr1-migrate-to-pytest`. 45 tests collected: 37
+in the default run, 8 behind `-m integration`. Before the port there were
+44 pass/fail decisions that could run (20 in `test_gate.py`, at import
+rather than as tests, plus 24 in `test_omnigab.py`), and one in
+`test_usajobs.py` that could not. `tests/evolution_benchmark.py`
+moved to `scripts/` because it is a benchmark, not a test: it has no
+assertions, needs a loaded model, and writes its stats into
+`data/evolution/`. It also surfaced one thing worth writing down, now in
+`docs/TODOS.md`: nineteen `print` sites under `src/` emit non-ASCII and
+raise `UnicodeEncodeError` on a cp1252 console, two of them on paths the
+integration tests reach, which PR2's `windows-latest` job will hit.
+
 ---
 
 ### PR1a: make llama.cpp an optional dependency

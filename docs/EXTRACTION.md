@@ -58,7 +58,7 @@ Amounts get a digits-only fallback so `$1,234.00` matches a document reading `$1
 
 ## Testing
 
-`tests/test_gate.py`, 20 assertions, no model or GPU required.
+`tests/test_gate.py`, 20 parametrized cases, no model or GPU required.
 
 Most of them are attacks, because the gate's entire value is that it says no:
 
@@ -73,7 +73,7 @@ Most of them are attacks, because the gate's entire value is that it says no:
 Plus the false-rejection cases that would make it unusable if it were too strict: collapsed whitespace, curly punctuation, missing thousands separators, uppercase.
 
 ```
-venv\Scripts\python.exe tests\test_gate.py
+venv\Scripts\python.exe -m pytest tests/test_gate.py
 ```
 
 ## What is not built yet
@@ -95,5 +95,5 @@ src/extraction/
 ├── schema.py        BillExtraction, GateResult, JSON schema, model instruction
 └── gate.py          verify(), normalize(), the three checks
 
-tests/test_gate.py   20 adversarial assertions
+tests/test_gate.py   20 adversarial cases, one parametrized table
 ```

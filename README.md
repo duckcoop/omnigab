@@ -161,11 +161,12 @@ omnigab/
 ## Tests
 
 ```bash
-venv\Scripts\python.exe tests\test_omnigab.py --all
-venv\Scripts\python.exe tests\test_gate.py
+venv\Scripts\python.exe -m pytest
+venv\Scripts\python.exe -m pytest -m integration
 ```
 
-Neither needs a GPU or a downloaded model.
+The default run needs no GPU, no downloaded model, and no network. The
+second one opts into the checks that query USAJOBS and NIST NVD live.
 
 ---
 

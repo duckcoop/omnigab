@@ -6,7 +6,7 @@ Boring on purpose. This PR moves tests, it does not write new ones.
 
 ```
 Read AGENTS.md and docs/PLAN.md before doing anything. This is PR1.
-PR0 (packaging) must already be merged.
+PR0 (packaging) and PR0a (flake8 to zero) are both merged.
 
 GOAL
 One test runner. Migrate both bespoke harnesses to pytest without
@@ -17,6 +17,18 @@ CURRENT STATE
   `check(name, got, want)` function that executes at import time and
   calls `sys.exit(1)` at the bottom. Not discoverable, not
   parametrizable.
+
+  Understand this before you touch it: those 20 assertions DO run
+  today, but as a side effect of import during collection, not as
+  tests. `pytest -q -s` prints all 20 PASS lines and then exits 5,
+  because pytest finds no `test_` function. Two consequences. First,
+  `--cov=src` currently reports non-zero coverage on `src/extraction`
+  by accident. Second, a real gate failure today surfaces as a
+  collection error, exit 2, rather than a test failure. Converting this
+  to a parametrized table is worth more than the diff size suggests.
+
+- `tests/evolution_benchmark.py` had its `sys.path.insert` removed in
+  PR0 but is otherwise untouched.
 - `tests/test_omnigab.py` is a custom harness with a `Reporter` class,
   argparse flags (`--db`, `--cert-filter`, `--python-eval`, `--cve`,
   `--scraper`, `--resume-builder`), and an exit code equal to the
@@ -24,10 +36,9 @@ CURRENT STATE
   which leaks global state.
 - `tests/test_usajobs.py` also exists and also calls `os.chdir` (line
   61). Migrate it too.
-- `tests/evolution_benchmark.py` also does `sys.path.insert`. Decide
-  whether it is a test or a benchmark. If it is a benchmark, move it out
-  of `tests/` so pytest does not collect it, and say so. If it is a
-  test, migrate it.
+- Decide whether `tests/evolution_benchmark.py` is a test or a
+  benchmark. If it is a benchmark, move it out of `tests/` so pytest
+  does not collect it, and say so. If it is a test, migrate it.
 
 TASK
 1. Port `tests/test_gate.py` to pytest.

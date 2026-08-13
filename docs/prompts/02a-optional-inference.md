@@ -40,6 +40,34 @@ the job sources have no business needing llama.cpp to import. That is
 the actual defect. CI is what exposed it.
 
 TASK
+
+0. FIRST, fix a pin bug from PR0 that is unrelated to llama.cpp but
+   blocks the same CI job.
+
+   `numpy>=2.5,<3.0` at pyproject.toml:31 is incompatible with
+   `requires-python = ">=3.10,<3.13"` on the same file. Verified against
+   PyPI:
+
+     numpy 2.2.6  requires_python >=3.10   cp310 cp311 cp312 cp313
+     numpy 2.3.0  requires_python >=3.11   cp311 cp312 cp313
+     numpy 2.4.0  requires_python >=3.11   cp311 cp312 cp313 cp314
+     numpy 2.5.0  requires_python >=3.12   cp312 cp313 cp314
+     numpy 2.5.2  requires_python >=3.12   cp312 cp313 cp314
+
+   numpy 2.5 dropped everything below 3.12, so the project is
+   uninstallable on 3.10 and 3.11 today, on every platform. AGENTS.md
+   section 5 and pyproject both claim 3.10 through 3.12.
+
+   Change it to `numpy>=2.2,<3.0`. pip then resolves 2.2.6 on 3.10,
+   2.4.x on 3.11, and 2.5.x on 3.12, which is the correct behavior for a
+   floor.
+
+   This is PR0's pinning method leaking: it anchored every floor to the
+   version installed on a 3.12 machine. Check whether any OTHER pin in
+   [project.dependencies] has the same problem, by resolving each one
+   against 3.10, 3.11, and 3.12 rather than eyeballing it. Report what
+   you find even if the answer is "only numpy".
+
 1. In pyproject.toml, move `llama-cpp-python>=0.3,<0.4` out of
    [project.dependencies] and into a new optional extra. Name it
    `inference`. Keep the existing comment explaining why its lower
@@ -50,13 +78,23 @@ TASK
    llama-cpp-python CUDA wheel, so if llama.cpp is optional they
    arguably are too. Decide, and say why.
 
-2. Find every module-scope `import llama_cpp` or
-   `from llama_cpp import ...` in the tree. Start with src/generator.py
-   (the llama.cpp wrapper) and src/core/model_manager.py, but search
-   rather than assuming those are the only two.
+2. The import-laziness work is nearly done already. An audit found
+   exactly one module-scope import:
 
-3. Make each one lazy: import inside the function that needs it, not at
-   module scope. The goal is that `import config`, `import extraction`,
+     src/generator.py:30      from llama_cpp import Llama   <-- the only one
+
+   These are already function-local and need no change:
+
+     src/generator.py:94      from llama_cpp import GGML_TYPE_Q8_0
+     src/generator.py:134     import llama_cpp as _lc
+     src/core/model_manager.py:56    import llama_cpp
+     src/core/model_manager.py:294   from generator import Generator
+     src/rag_agent.py:61,64          from generator import Generator...
+
+   Confirm this yourself rather than trusting it, then move only
+   `generator.py:30` into the function that needs it.
+
+3. The goal is that `import config`, `import extraction`,
    `import core.tool_protocol`, and the whole default pytest run all
    succeed with llama-cpp-python absent.
 
@@ -110,6 +148,11 @@ ACCEPTANCE
   run `pip install -e ".[dev]"` with NO extra index URL, confirm
   llama-cpp-python is not installed, and confirm `pytest` passes. Paste
   the pip output showing llama-cpp-python absent.
+- Resolve the dependency set against Python 3.10, 3.11, AND 3.12, and
+  show that all three succeed. Use `pip install --dry-run` with
+  `--python-version` and `--only-binary=:all:` if you cannot create
+  three real interpreters. This is the check that would have caught the
+  numpy bug in PR0, so make it part of the record.
 - `pip install -e ".[dev,inference]"` still resolves when the CUDA
   wheel index is supplied.
 - Both entry points still start on your machine, where inference IS

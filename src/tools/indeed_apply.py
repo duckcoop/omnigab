@@ -349,7 +349,7 @@ class IndeedApplyTool:
     # ----- internals --------------------------------------------------
 
     def _search_listings(self, page, query, location, max_jobs, PWTimeout,
-                          fetch_details: bool = False) -> list[dict]:
+                         fetch_details: bool = False) -> list[dict]:
         url = f"https://www.indeed.com/jobs?q={quote_plus(query)}&l={quote_plus(location)}&fromage=14&sort=date"
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=30000)

@@ -142,7 +142,7 @@ class CveLookupTool:
                     "vector": primary.get("vectorString"),
                     "base_score": primary.get("baseScore"),
                     "severity": (arr[0].get("baseSeverity")
-                                  or primary.get("baseSeverity")),
+                                 or primary.get("baseSeverity")),
                 }
                 break
 

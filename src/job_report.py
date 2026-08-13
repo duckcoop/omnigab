@@ -172,14 +172,14 @@ if __name__ == "__main__":
 
     sample_jobs = [
         JobListing("Senior Python Developer", "Acme Corp", "Austin, TX",
-                    "$120,000 - $150,000/year", "Build backend services...",
-                    "https://indeed.com/example1", 92, "Strong Python match with backend experience."),
+                   "$120,000 - $150,000/year", "Build backend services...",
+                   "https://indeed.com/example1", 92, "Strong Python match with backend experience."),
         JobListing("IT Support Specialist", "Tech Solutions Inc", "Remote",
-                    "$55,000 - $70,000/year", "Provide technical support...",
-                    "https://indeed.com/example2", 74, "IT experience aligns but looking for more senior role."),
+                   "$55,000 - $70,000/year", "Provide technical support...",
+                   "https://indeed.com/example2", 74, "IT experience aligns but looking for more senior role."),
         JobListing("Data Analyst", "DataCo", "Baltimore, MD",
-                    "$80,000/year", "Analyze datasets...",
-                    "https://indeed.com/example3", 45, "Some skill overlap but different career focus."),
+                   "$80,000/year", "Analyze datasets...",
+                   "https://indeed.com/example3", 45, "Some skill overlap but different career focus."),
     ]
 
     path = generate_job_report(sample_jobs, "Python Developer", "Maryland")

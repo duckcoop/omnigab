@@ -19,7 +19,6 @@ echo "============================================================"
 if ! "$PY" -m flake8 src tests; then
     echo
     echo "[verify] FAILED: flake8"
-    echo "[verify] Until PR0a lands this reports 63 pre-existing findings."
     exit 1
 fi
 echo "[verify] flake8 clean"

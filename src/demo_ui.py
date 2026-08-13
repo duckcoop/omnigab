@@ -15,7 +15,6 @@ Run:
 """
 
 import sys
-import time
 from pathlib import Path
 
 try:
@@ -25,8 +24,6 @@ try:
     from rich.text import Text
     from rich.prompt import Prompt
     from rich.rule import Rule
-    from rich.columns import Columns
-    from rich.live import Live
     from rich import box
 except ImportError:
     print("This script requires the 'rich' library.")
@@ -34,8 +31,8 @@ except ImportError:
     sys.exit(1)
 
 from config import (
-    EMBEDDING_MODEL, FAITHFULNESS_THRESHOLD, CLAIM_SUPPORT_THRESHOLD,
-    TOP_K, USE_GGUF, GGUF_MODEL_PATH, N_THREADS,
+    EMBEDDING_MODEL, FAITHFULNESS_THRESHOLD,
+    USE_GGUF, GGUF_MODEL_PATH, N_THREADS,
 )
 from rag_agent import RAGAgent
 

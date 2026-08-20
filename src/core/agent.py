@@ -512,7 +512,8 @@ class Agent:
 
             call = self._extract_tool_call(raw)
             if call is None:
-                turn.answer = _strip_tool_artifacts(raw).strip()
+                turn.answer = _strip_tool_artifacts(
+                    normalize_reasoning_tags(raw)).strip()
                 break
 
             turn.tool_calls.append(call)
@@ -526,8 +527,9 @@ class Agent:
                 "content": self._observation_payload(result),
             })
         else:
-            turn.answer = (_strip_tool_artifacts(last_raw).strip()
-                           or "(stopped: tool hop limit reached)")
+            turn.answer = (_strip_tool_artifacts(
+                normalize_reasoning_tags(last_raw)).strip()
+                or "(stopped: tool hop limit reached)")
 
         rendered = self._rendered_blocks(turn.tool_results)
         if rendered:
@@ -571,13 +573,19 @@ class Agent:
             prompt = gen.format_messages(messages)
 
             buffer = ""
+            visible = ""
             yielded_up_to = 0
 
             async for token in gen.stream_async(prompt):
                 buffer += token
+                # Normalized before anything reaches the UI, so a model that
+                # thinks in <think> renders the same as one that thinks in
+                # <thinking>. Safe on a partial buffer because the rewrite is
+                # prefix-preserving; see normalize_reasoning_tags.
+                visible = normalize_reasoning_tags(buffer)
 
-                if "<tool_call>" in buffer and "</tool_call>" not in buffer:
-                    head = buffer.split("<tool_call>", 1)[0]
+                if "<tool_call>" in visible and "</tool_call>" not in visible:
+                    head = visible.split("<tool_call>", 1)[0]
                     if len(head) > yielded_up_to:
                         delta = head[yielded_up_to:]
                         if delta:
@@ -585,19 +593,22 @@ class Agent:
                         yielded_up_to = len(head)
                     continue
 
-                if "</tool_call>" in buffer:
+                if "</tool_call>" in visible:
                     break
 
-                if len(buffer) > yielded_up_to:
-                    delta = buffer[yielded_up_to:]
+                if len(visible) > yielded_up_to:
+                    delta = visible[yielded_up_to:]
                     if delta:
                         yield {"type": "token", "text": delta}
-                    yielded_up_to = len(buffer)
+                    yielded_up_to = len(visible)
 
+            # Tool-call extraction reads the raw buffer. The rewrite only
+            # touches reasoning tags, but the parser should still see
+            # exactly what the model emitted.
             call = self._extract_tool_call(buffer)
             if call is None:
                 # Final answer for this turn.
-                clean = _strip_tool_artifacts(buffer)
+                clean = _strip_tool_artifacts(visible)
                 if len(clean) > yielded_up_to:
                     # Flush anything we held back (no-op if saw_call_start is False).
                     yield {"type": "token", "text": clean[yielded_up_to:]}
@@ -648,3 +659,32 @@ class Agent:
 def _strip_tool_artifacts(text: str) -> str:
     """Remove any incomplete tool_call fragment from user-visible text."""
     return re.sub(r"<tool_call>.*", "", text, flags=re.DOTALL)
+
+
+# Reasoning models emit their working in <think> tags natively. This app's
+# own system prompt asks for <thinking>, and the desktop renderer already
+# dims that spelling so reasoning is visible without looking like an
+# answer. Rewriting one to the other is the whole fix: without it a model
+# that thinks out loud prints raw tags and its internal monologue into the
+# chat as ordinary text.
+#
+# Deliberately a rename rather than a strip. The reasoning is worth seeing,
+# the existing UI already knows how to show it, and stripping would throw
+# away the one signal that tells a user why an answer looks as it does.
+#
+# The rewrite is prefix-preserving, which is what makes it safe to apply to
+# a partial buffer while streaming: every prefix of "<think>" is also a
+# prefix of "<thinking>", so text already sent to the UI is never
+# invalidated by a later token. test_reasoning_tags.py pins that property.
+_REASONING_TAG_RE = re.compile(r"<(/?)think>")
+
+
+def normalize_reasoning_tags(text: str) -> str:
+    """Rewrite a model's native `<think>` tags to this app's `<thinking>`.
+
+    Leaves `<thinking>` alone: the pattern requires the closing angle
+    bracket immediately after "think", which `<thinking>` does not have.
+    """
+    if not text:
+        return text
+    return _REASONING_TAG_RE.sub(r"<\1thinking>", text)

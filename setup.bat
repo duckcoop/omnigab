@@ -163,14 +163,17 @@ echo [OK] Dependencies installed.
 :: -----------------------------------------------
 :: 5. Download default model
 :: -----------------------------------------------
+:: Must stay in step with DEFAULT_GGUF_MODEL in src/config.py. If the two
+:: disagree, a first run defaults to a model the installer never fetched
+:: and the user meets a "not downloaded" error before typing anything.
 set "MODELS_DIR=%~dp0models"
-set "GGUF_MODEL=%MODELS_DIR%\qwen2.5-1.5b-instruct-q4_k_m.gguf"
+set "GGUF_MODEL=%MODELS_DIR%\Qwen_Qwen3.5-4B-Q4_K_M.gguf"
 
 if not exist "%GGUF_MODEL%" (
     echo.
-    echo [SETUP] Downloading default Qwen2.5-1.5B model ^(~1.1 GB^)...
+    echo [SETUP] Downloading default Qwen3.5-4B model ^(~3 GB^)...
     if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
-    "%~dp0venv\Scripts\python.exe" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='Qwen/Qwen2.5-1.5B-Instruct-GGUF', filename='qwen2.5-1.5b-instruct-q4_k_m.gguf', local_dir=r'%MODELS_DIR%')"
+    "%~dp0venv\Scripts\python.exe" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='bartowski/Qwen_Qwen3.5-4B-GGUF', filename='Qwen_Qwen3.5-4B-Q4_K_M.gguf', local_dir=r'%MODELS_DIR%')"
     if not exist "%GGUF_MODEL%" (
         echo [ERROR] Model download failed.
         pause

@@ -12,7 +12,7 @@ and you should say so instead of silently picking one.
 ## 1. What OmniGab is
 
 A private life-admin assistant that runs entirely on the user's own
-computer. A Qwen2.5 GGUF model runs through llama.cpp on the local GPU
+computer. A Qwen3.5 GGUF model runs through llama.cpp on the local GPU
 or CPU. There is no server, no account, and no API key. The user drops
 bills and leases into a folder, the app extracts the obligations inside
 them, shows the evidence it used, and reminds them before deadlines hit.

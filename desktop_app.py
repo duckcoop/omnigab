@@ -1517,23 +1517,35 @@ class RAGApp(tk.Tk):
     def _safe_ctx_for(vram_gb, model_name):
         """Largest context that keeps weights + KV cache inside VRAM.
 
-        KV cache is quantized to q8_0, which halves it versus fp16. For
-        Qwen2.5 the cache costs roughly 0.09 GB per 1024 tokens at 14B and
-        scales down with model size. Returns None when we cannot tell.
+        Reads both numbers from the catalog rather than matching "14B" and
+        "7B" as substrings of the filename, which is what this did while
+        the catalog was Qwen2.5. That version returned None for any name it
+        did not recognise, so every Qwen3.5 filename would have silently
+        blanked the "what your card could handle" figure in Settings.
+
+        KV cache is quantized to q8_0. The per-token cost is measured, not
+        derived, and is the same for every model in this family; see
+        KV_CACHE_GB_PER_1K. Returns None when we cannot tell.
         """
         if not vram_gb or not model_name:
             return None
-        weights = {"14B": 9.0, "7B": 4.4, "3B": 2.1, "1.5B": 1.1}
-        per_1k = {"14B": 0.094, "7B": 0.055, "3B": 0.043, "1.5B": 0.035}
-        tag = next((t for t in weights if t.lower() in model_name.lower()), None)
-        if tag is None:
+        # Local import: the desktop shell talks to the API over HTTP and
+        # deliberately does not pull the model stack in at startup.
+        try:
+            from core.model_manager import MODEL_PROFILE, KV_CACHE_GB_PER_1K
+        except ImportError:
+            return None
+        profile = MODEL_PROFILE.get(model_name)
+        if profile is None:
             return None
         # Leave 1 GB for compute buffers and the desktop.
-        free = vram_gb - weights[tag] - 1.0
+        free = vram_gb - profile["weight_gb"] - 1.0
         if free <= 0:
             return 2048
-        tokens = int((free / per_1k[tag]) * 1024)
-        for step in (32768, 16384, 8192, 4096, 2048):
+        tokens = int((free / KV_CACHE_GB_PER_1K) * 1024)
+        # Ladder stops at the trained window; past it quality falls off
+        # even when the card could hold more.
+        for step in (262144, 131072, 65536, 32768, 16384, 8192, 4096, 2048):
             if tokens >= step:
                 return step
         return 2048
@@ -1821,7 +1833,7 @@ class RAGApp(tk.Tk):
                 color = {"good": GREEN, "marginal": AMBER, "poor": RED}.get(tier, FG_DIM)
                 label = {"good": "tools: ready",
                          "marginal": "tools: weak (upgrade model)",
-                         "poor": "tools: broken (switch to 7B/14B)"}.get(tier, "tools: --")
+                         "poor": "tools: untested on this model"}.get(tier, "tools: --")
                 self.status_tools.configure(text=label, foreground=color)
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()

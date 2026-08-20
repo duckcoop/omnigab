@@ -15,7 +15,7 @@ import time
 import threading
 import socket
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, messagebox
 import urllib.request
 import urllib.error
 
@@ -47,12 +47,31 @@ BORDER = "#324035"         # slightly green-tinted border (was #3a3833)
 USER_BUBBLE_BG = "#1c3a2e"
 USER_BUBBLE_BG_DARK = "#162d24"
 USER_BUBBLE_FG = "#e6f0e2"
-FONT = ("Segoe UI", 11)
-FONT_SM = ("Segoe UI", 10)
-FONT_XS = ("Segoe UI", 9)
-FONT_LG = ("Segoe UI", 13)
-FONT_TITLE = ("Georgia", 15, "bold")
-FONT_ASCII = ("Georgia", 28)
+# Two families, on purpose. Chrome (labels, prefixes, status, headings) is
+# monospace, which is where the terminal identity lives. Body prose stays
+# proportional, because a long answer set in monospace is genuinely harder
+# to read and the aesthetic is not worth costing the user that.
+#
+# Georgia used to supply FONT_TITLE and the empty-state heading. A serif
+# belongs to neither half and read as an accident rather than a choice.
+MONO = "Consolas"
+SANS = "Segoe UI"
+
+FONT = (SANS, 11)
+FONT_SM = (SANS, 10)
+FONT_XS = (SANS, 9)
+FONT_LG = (SANS, 13)
+FONT_TITLE = (MONO, 14, "bold")
+FONT_ASCII = (MONO, 22)
+FONT_MONO_SM = (MONO, 10)
+FONT_MONO_XS = (MONO, 9)
+
+# The transcript is capped at a readable measure instead of stretching to
+# the window. On a 2560px monitor a full-width line is roughly 300
+# characters, which is unreadable; 820px lands near the 70-90 characters
+# that prose is comfortable at.
+CONTENT_MAX_W = 820
+COMPOSER_MAX_W = 820
 
 
 def api_get(path):
@@ -144,6 +163,32 @@ class RAGApp(tk.Tk):
         # Style
         self.style = ttk.Style()
         self.style.theme_use("clam")
+
+        # Thin, dark, no arrow buttons. The classic tk.Scrollbar that
+        # ScrolledText creates ignores colour options on Windows and renders
+        # as a light native widget against the dark panel; a ttk scrollbar
+        # under clam does not.
+        self.style.element_create("Chat.Vertical.Scrollbar.trough", "from", "clam")
+        self.style.element_create("Chat.Vertical.Scrollbar.thumb", "from", "clam")
+        self.style.layout("Chat.Vertical.TScrollbar", [
+            ("Chat.Vertical.Scrollbar.trough", {
+                "sticky": "ns",
+                "children": [
+                    ("Chat.Vertical.Scrollbar.thumb",
+                     {"expand": "1", "sticky": "nswe"}),
+                ],
+            }),
+        ])
+        self.style.configure(
+            "Chat.Vertical.TScrollbar",
+            background=BG3, troughcolor=BG, bordercolor=BG,
+            lightcolor=BG3, darkcolor=BG3, arrowcolor=FG_DIM,
+            borderwidth=0, relief="flat", width=10,
+        )
+        self.style.map(
+            "Chat.Vertical.TScrollbar",
+            background=[("active", GREEN_DIM), ("pressed", GREEN_DIM)],
+        )
         self._configure_styles()
 
         # Build UI
@@ -196,50 +241,77 @@ class RAGApp(tk.Tk):
                foreground=[("active", BG)])
 
     def _build_topbar(self):
-        bar = ttk.Frame(self, style="Topbar.TFrame", height=36)
+        """Identity on the left, live status on the right.
+
+        The status items used to be packed with 8px between them and no
+        separators, so five of them ran together into one dense string in
+        the corner. They are the same labels, given room and a divider.
+        """
+        bar = ttk.Frame(self, style="Topbar.TFrame", height=44)
         bar.pack(fill="x", side="top")
         bar.pack_propagate(False)
 
-        ttk.Label(bar, text="omnigab", style="Logo.TLabel").pack(side="left", padx=(12, 4))
+        ttk.Label(bar, text="omnigab", style="Logo.TLabel").pack(
+            side="left", padx=(20, 10))
 
-        sep = ttk.Label(bar, text=" | ", style="Topbar.TLabel")
-        sep.pack(side="left", padx=4)
-
-        self.model_label = ttk.Label(bar, text="loading...", style="Topbar.TLabel")
+        self.model_label = ttk.Label(bar, text="loading...",
+                                     style="Topbar.TLabel")
         self.model_label.pack(side="left")
 
-        # Right side status
-        self.status_session = ttk.Label(bar, text="session: active", style="Topbar.TLabel")
-        self.status_session.pack(side="right", padx=(8, 12))
+        # Right side, packed right-to-left, so declare in reverse order.
+        self.status_session = ttk.Label(bar, text="session: active",
+                                        style="Topbar.TLabel")
+        self.status_session.pack(side="right", padx=(0, 20))
         self.status_web = ttk.Label(bar, text="web: --", style="Topbar.TLabel")
-        self.status_web.pack(side="right", padx=8)
-        self.status_index = ttk.Label(bar, text="index: --", style="Topbar.TLabel")
-        self.status_index.pack(side="right", padx=8)
-        self.status_resume = ttk.Label(bar, text="resume: none", style="Topbar.TLabel")
-        self.status_resume.pack(side="right", padx=8)
-        # Tool-calling capability badge. Red on 1.5B (can't tool-call),
-        # amber on 3B (marginal), green on 7B/14B.
-        self.status_tools = ttk.Label(bar, text="tools: --", style="Topbar.TLabel")
-        self.status_tools.pack(side="right", padx=8)
+        self.status_web.pack(side="right", padx=14)
+        self.status_index = ttk.Label(bar, text="index: --",
+                                      style="Topbar.TLabel")
+        self.status_index.pack(side="right", padx=14)
+        self.status_resume = ttk.Label(bar, text="resume: none",
+                                       style="Topbar.TLabel")
+        self.status_resume.pack(side="right", padx=14)
+        # Tool-calling capability badge, set from the measured tier in
+        # web_app._tool_calling_capability rather than from model size.
+        self.status_tools = ttk.Label(bar, text="tools: --",
+                                      style="Topbar.TLabel")
+        self.status_tools.pack(side="right", padx=(14, 14))
+        tk.Frame(bar, bg=BORDER, width=1).pack(
+            side="right", fill="y", pady=12)
 
     def _build_tabs(self):
+        """Tab strip with an underline on the active tab.
+
+        Colour alone carried the active state before, which is a weak
+        signal on a palette that is already mostly green, and invisible to
+        anyone who cannot separate the two greens.
+        """
         self.tabbar = ttk.Frame(self, style="TabBar.TFrame")
         self.tabbar.pack(fill="x", side="top")
 
-        # Separator line
         sep = tk.Frame(self, bg=BORDER, height=1)
         sep.pack(fill="x", side="top")
 
         self.tabs = {}
+        self.tab_indicators = {}
         self.current_tab = "chat"
         tab_names = ["chat", "docs", "models", "settings", "developer"]
 
+        holder = tk.Frame(self.tabbar, bg=BG2)
+        holder.pack(side="left", padx=(14, 0))
+
         for name in tab_names:
+            cell = tk.Frame(holder, bg=BG2)
+            cell.pack(side="left")
             style = "ActiveTab.TButton" if name == "chat" else "Tab.TButton"
-            btn = ttk.Button(self.tabbar, text=name.title(), style=style,
+            btn = ttk.Button(cell, text=name.title(), style=style,
                              command=lambda n=name: self._switch_tab(n))
-            btn.pack(side="left", padx=0)
+            btn.pack(side="top")
+            # 2px rule under the active tab. Packed always, coloured to
+            # match the bar when inactive, so the strip never reflows.
+            bar = tk.Frame(cell, bg=GREEN if name == "chat" else BG2, height=2)
+            bar.pack(side="top", fill="x")
             self.tabs[name] = btn
+            self.tab_indicators[name] = bar
 
     def _switch_tab(self, name):
         self.current_tab = name
@@ -250,6 +322,8 @@ class RAGApp(tk.Tk):
                 frame.pack(fill="both", expand=True)
             else:
                 frame.pack_forget()
+        for tab_name, indicator in getattr(self, "tab_indicators", {}).items():
+            indicator.configure(bg=GREEN if tab_name == name else BG2)
         if name == "chat":
             self.chat_input.focus_set()
 
@@ -268,103 +342,175 @@ class RAGApp(tk.Tk):
 
     # ========== CHAT PANEL ==========
     def _build_chat_panel(self):
+        """Transcript and composer, both inside one centered reading column.
+
+        The old layout let both run the full width of the window and pinned
+        the composer to the bottom edge, so on a wide monitor you got a
+        300-character measure above a 1900px input strip. Everything here
+        sits in a column capped at CONTENT_MAX_W and kept centered by
+        _center_chat_column on resize.
+        """
         frame = ttk.Frame(self, style="Panel.TFrame")
         frame.pack(fill="both", expand=True)
         self.panels["chat"] = frame
 
-        # Chat output
-        self.chat_output = scrolledtext.ScrolledText(
-            frame, wrap="word", bg=BG, fg=FG, font=FONT,
+        column = tk.Frame(frame, bg=BG)
+        column.pack(fill="both", expand=True)
+        self._chat_column = column
+        frame.bind("<Configure>", self._center_chat_column)
+
+        # Text plus an explicit ttk scrollbar, rather than ScrolledText.
+        # ScrolledText builds a classic tk.Scrollbar, which on Windows
+        # accepts colour options and then ignores them, drawing itself with
+        # the native theme: a light grey bar down the side of a dark panel.
+        transcript = tk.Frame(column, bg=BG)
+        transcript.pack(fill="both", expand=True)
+
+        self.chat_output = tk.Text(
+            transcript, wrap="word", bg=BG, fg=FG, font=FONT,
             insertbackground=GREEN, selectbackground=BORDER,
-            borderwidth=0, highlightthickness=0, padx=16, pady=12,
-            cursor="arrow", state="disabled"
+            borderwidth=0, highlightthickness=0, padx=4, pady=24,
+            cursor="arrow", state="disabled",
         )
-        self.chat_output.pack(fill="both", expand=True)
+        self.chat_scroll = ttk.Scrollbar(
+            transcript, orient="vertical", style="Chat.Vertical.TScrollbar",
+            command=self.chat_output.yview,
+        )
+        self.chat_output.configure(yscrollcommand=self.chat_scroll.set)
+        self.chat_scroll.pack(side="right", fill="y")
+        self.chat_output.pack(side="left", fill="both", expand=True)
 
-        # Configure text tags
-        self.chat_output.tag_configure(
-            "user_prefix",
-            foreground=USER_BUBBLE_FG, background=USER_BUBBLE_BG_DARK,
-            font=("Consolas", 10, "bold"),
-            lmargin1=10, lmargin2=10, rmargin=10, spacing1=6,
-        )
-        self.chat_output.tag_configure("bot_prefix", foreground=GREEN, font=("Consolas", 10, "bold"))
-        self.chat_output.tag_configure(
-            "user_text",
-            foreground=USER_BUBBLE_FG, background=USER_BUBBLE_BG, font=FONT,
-            lmargin1=10, lmargin2=10, rmargin=10, spacing3=6,
-        )
-        self.chat_output.tag_configure("bot_text", foreground=FG, font=FONT)
-        self.chat_output.tag_configure("meta", foreground=FG_DIM, font=FONT_XS)
-        self.chat_output.tag_configure("meta_good", foreground=GREEN, font=FONT_XS)
-        self.chat_output.tag_configure("meta_warn", foreground=AMBER, font=FONT_XS)
-        self.chat_output.tag_configure("meta_bad", foreground=RED, font=FONT_XS)
-        self.chat_output.tag_configure("error", foreground=RED, font=FONT)
-        self.chat_output.tag_configure("welcome", foreground=FG_BRIGHT, font=FONT_ASCII, justify="center")
-        self.chat_output.tag_configure("welcome_sub", foreground=FG_DIM, font=FONT_SM, justify="center")
-        self.chat_output.tag_configure("source", foreground=AMBER, font=FONT_XS)
-        self.chat_output.tag_configure("tool_call", foreground=CYAN, font=("Consolas", 10, "italic"))
-        # `<thinking>` blocks: dim italic so the reasoning is visible but
-        # clearly separated from the final answer.
-        self.chat_output.tag_configure(
-            "thinking", foreground=FG_DIM, font=("Segoe UI", 10, "italic"),
-            lmargin1=12, lmargin2=12, rmargin=12, spacing1=4, spacing3=4,
-        )
-        self.chat_output.tag_configure("tool_result", foreground=AMBER, font=FONT_XS)
-        self.chat_output.tag_configure("bold", foreground=FG_BRIGHT, font=("Segoe UI", 11, "bold"))
-        self.chat_output.tag_configure("link", foreground=BLUE, font=("Segoe UI", 11, "underline"))
-        self.chat_output.tag_configure("salary", foreground=GREEN, font=("Segoe UI", 10))
-        self.chat_output.tag_bind("link", "<Button-1>", self._on_link_click)
-        self.chat_output.tag_bind("link", "<Enter>",
-                                  lambda e: self.chat_output.configure(cursor="hand2"))
-        self.chat_output.tag_bind("link", "<Leave>",
-                                  lambda e: self.chat_output.configure(cursor="arrow"))
-        # Map text indices -> URLs for click handling.
-        self._link_targets: dict[str, str] = {}
+        self._configure_chat_tags()
+        self._link_targets = {}
+        self._show_empty_state()
 
-        # Welcome message
+        # --- composer ---------------------------------------------------
+        # Sits inside the column with room beneath it rather than welded to
+        # the window edge, and reads as one bordered field that happens to
+        # contain the attach and send controls.
+        composer_wrap = tk.Frame(column, bg=BG)
+        composer_wrap.pack(fill="x", pady=(0, 20))
+
+        composer = tk.Frame(composer_wrap, bg=BG2,
+                            highlightbackground=BORDER, highlightthickness=1)
+        composer.pack(fill="x")
+
+        self.attach_btn = tk.Button(
+            composer, text="+", fg=FG_DIM, bg=BG2,
+            activebackground=BG2, activeforeground=GREEN,
+            font=(MONO, 16), borderwidth=0, highlightthickness=0,
+            cursor="hand2", padx=10, pady=0,
+            command=self._attach_file,
+        )
+        self.attach_btn.pack(side="left")
+
+        # Borderless on purpose: the surrounding frame is the visible field,
+        # so an entry with its own border would draw a box inside a box.
+        self.chat_input = tk.Entry(
+            composer, bg=BG2, fg=FG_BRIGHT, font=FONT,
+            insertbackground=GREEN, selectbackground=GREEN_DIM,
+            borderwidth=0, highlightthickness=0,
+        )
+        self.chat_input.pack(side="left", fill="x", expand=True,
+                             ipady=10, padx=(2, 8))
+        self.chat_input.bind("<Return>", lambda e: self._send_query())
+        self.chat_input.bind(
+            "<FocusIn>",
+            lambda e: composer.configure(highlightbackground=GREEN_DIM))
+        self.chat_input.bind(
+            "<FocusOut>",
+            lambda e: composer.configure(highlightbackground=BORDER))
+
+        self.send_btn = tk.Button(
+            composer, text="SEND", bg=BG2, fg=GREEN,
+            font=(MONO, 9, "bold"), borderwidth=0, highlightthickness=0,
+            activebackground=BG2, activeforeground=FG_BRIGHT,
+            cursor="hand2", padx=14, pady=6,
+            command=self._send_query,
+        )
+        self.send_btn.pack(side="right", padx=(0, 6))
+
+        tk.Label(composer_wrap,
+                 text="Enter to send   +  to attach a file",
+                 fg=FG_DIM, bg=BG, font=FONT_MONO_XS, anchor="w").pack(
+            anchor="w", pady=(6, 0))
+
+    def _center_chat_column(self, event=None):
+        """Keep the reading column centered and capped as the window resizes."""
+        width = self.panels["chat"].winfo_width()
+        pad = max(24, (width - CONTENT_MAX_W) // 2)
+        self._chat_column.pack_configure(padx=pad)
+
+    def _configure_chat_tags(self):
+        """Text tags for the transcript. Chrome is mono, prose is not."""
+        out = self.chat_output
+        out.tag_configure("user_prefix", foreground=GREEN,
+                          font=(MONO, 9, "bold"), spacing1=16)
+        out.tag_configure("bot_prefix", foreground=FG_DIM,
+                          font=(MONO, 9, "bold"), spacing1=16)
+        # The user's turn is indented and tinted rather than boxed. A filled
+        # bubble at this width drew a hard rectangle across the whole column
+        # and fought the transcript for attention.
+        out.tag_configure("user_text", foreground=USER_BUBBLE_FG, font=FONT,
+                          lmargin1=14, lmargin2=14, rmargin=8, spacing3=4)
+        out.tag_configure("bot_text", foreground=FG, font=FONT,
+                          lmargin1=14, lmargin2=14, rmargin=8, spacing3=4)
+        out.tag_configure("meta", foreground=FG_DIM, font=FONT_MONO_XS,
+                          lmargin1=14, lmargin2=14)
+        out.tag_configure("meta_good", foreground=GREEN, font=FONT_MONO_XS)
+        out.tag_configure("meta_warn", foreground=AMBER, font=FONT_MONO_XS)
+        out.tag_configure("meta_bad", foreground=RED, font=FONT_MONO_XS)
+        out.tag_configure("error", foreground=RED, font=FONT,
+                          lmargin1=14, lmargin2=14)
+        out.tag_configure("welcome", foreground=FG_BRIGHT, font=FONT_ASCII,
+                          justify="center", spacing1=8, spacing3=10)
+        out.tag_configure("welcome_sub", foreground=FG_DIM, font=FONT_SM,
+                          justify="center")
+        out.tag_configure("source", foreground=AMBER, font=FONT_MONO_XS,
+                          lmargin1=14, lmargin2=14)
+        out.tag_configure("tool_call", foreground=CYAN, font=(MONO, 9),
+                          lmargin1=14, lmargin2=14)
+        # Reasoning blocks: dim, indented further than the answer so they
+        # read as working rather than as the answer itself.
+        out.tag_configure("thinking", foreground=FG_DIM,
+                          font=(SANS, 10, "italic"),
+                          lmargin1=24, lmargin2=24, rmargin=16,
+                          spacing1=4, spacing3=4)
+        out.tag_configure("tool_result", foreground=AMBER,
+                          font=FONT_MONO_XS, lmargin1=14, lmargin2=14)
+        out.tag_configure("bold", foreground=FG_BRIGHT,
+                          font=(SANS, 11, "bold"))
+        out.tag_configure("link", foreground=BLUE,
+                          font=(SANS, 11, "underline"))
+        out.tag_configure("salary", foreground=GREEN, font=(SANS, 10))
+        out.tag_bind("link", "<Button-1>", self._on_link_click)
+        out.tag_bind("link", "<Enter>", lambda e: out.configure(cursor="hand2"))
+        out.tag_bind("link", "<Leave>", lambda e: out.configure(cursor="arrow"))
+
+    def _show_empty_state(self):
+        """Greeting shown before the first turn.
+
+        The greeting used to be the literal string "Good evening" whatever
+        the clock said, which is the sort of detail that quietly tells a
+        user the software is not paying attention.
+        """
+        hour = time.localtime().tm_hour
+        if hour < 12:
+            greeting = "Good morning"
+        elif hour < 18:
+            greeting = "Good afternoon"
+        else:
+            greeting = "Good evening"
+
         self.chat_output.configure(state="normal")
-        self.chat_output.insert("end", "\n\nGood evening\n", "welcome")
+        self.chat_output.insert("end", "\n" + greeting + "\n", "welcome")
         self.chat_output.insert(
             "end",
-            "\nAsk about your documents, use skills, or start with a normal conversation.\n\n",
+            "Ask about your documents, use a skill, or just talk.\n",
             "welcome_sub",
         )
         self.chat_output.configure(state="disabled")
 
-        # Input area
-        input_frame = tk.Frame(frame, bg=BG2, padx=12, pady=10)
-        input_frame.pack(fill="x", side="bottom")
-
-        # "+" attach button: opens a file picker, uploads the file to
-        # data/docs/ via /api/docs/upload, then inserts a "[Attached: name]"
-        # hint into the chat input so the agent knows to look it up.
-        self.attach_btn = tk.Button(
-            input_frame, text="+", fg=GREEN, bg=BG2,
-            activebackground=BG3, activeforeground=FG_BRIGHT,
-            font=("Segoe UI", 18, "bold"), borderwidth=0,
-            cursor="hand2", padx=8, pady=0,
-            command=self._attach_file,
-        )
-        self.attach_btn.pack(side="left", padx=(0, 8))
-
-        self.chat_input = tk.Entry(
-            input_frame, bg=BG, fg=FG_BRIGHT, font=FONT,
-            insertbackground=GREEN, selectbackground=BORDER,
-            borderwidth=1, highlightthickness=1,
-            highlightcolor=GREEN, highlightbackground=BORDER,
-        )
-        self.chat_input.pack(side="left", fill="x", expand=True, ipady=6)
-        self.chat_input.bind("<Return>", lambda e: self._send_query())
-
-        self.send_btn = tk.Button(
-            input_frame, text="Send", bg=BG3, fg=FG_BRIGHT,
-            font=("Segoe UI", 10, "bold"), borderwidth=1,
-            highlightbackground=GREEN, activebackground=GREEN,
-            activeforeground=BG, cursor="hand2", padx=12,
-            command=self._send_query
-        )
-        self.send_btn.pack(side="right", padx=(8, 0))
 
     def _append_chat(self, text, tag="bot_text"):
         self.chat_output.configure(state="normal")

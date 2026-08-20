@@ -30,15 +30,10 @@ echo "============================================================"
 "$PY" -m pytest --cov=src --cov-report=term-missing
 PYTEST_RC=$?
 
-# Exit 5 means pytest collected no tests. That is the expected state
-# until PR1 lands, because none of the four files under tests/ define a
-# test_ function yet. Warn rather than fail, so this gate is usable
-# during PR0a. Delete this branch once PR1 is merged, so that "no tests
-# collected" goes back to being a real failure.
-if [ "$PYTEST_RC" -eq 5 ]; then
-    echo
-    echo "[verify] WARNING: pytest collected no tests. Expected until PR1."
-elif [ "$PYTEST_RC" -ne 0 ]; then
+# Any non-zero code is a failure, including 5 (no tests collected). PR1
+# tolerated 5 while tests/ held no test_ function; now that the suite is
+# real, "collected nothing" means collection broke.
+if [ "$PYTEST_RC" -ne 0 ]; then
     echo
     echo "[verify] FAILED: pytest (exit $PYTEST_RC)"
     exit 1

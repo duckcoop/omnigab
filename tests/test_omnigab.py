@@ -1,421 +1,280 @@
-"""omnigab modular test suite — no UI, no LLM by default.
+"""Subsystem checks: no UI, and no LLM outside the marked tests.
 
-Runs independent checks on each subsystem with verbose per-step logging.
-Designed for "did I just break X?" debugging without launching the
-full desktop app.
+Ported from the hand-rolled harness that used to live in this file. That
+version ran the same checks through a `Reporter` class and an argparse
+flag per subsystem, and exited with the failure count. pytest already does
+reporting and selection, so both are gone and what is left is the checks
+themselves, one test per check.
 
-Usage:
-    venv\\Scripts\\python.exe test_omnigab.py --all
-    venv\\Scripts\\python.exe test_omnigab.py --db --cert-filter
-    venv\\Scripts\\python.exe test_omnigab.py --scraper --max 3
-    venv\\Scripts\\python.exe test_omnigab.py --resume-builder
-    venv\\Scripts\\python.exe test_omnigab.py --python-eval --cve
+The two groups that need the live network, cve_lookup and the USAJOBS
+scraper, are marked `integration` and deselected by default:
 
-Exit code is the count of failing checks (0 = all green).
+    pytest                    # everything below except the marked groups
+    pytest -m integration     # only the live ones
+    pytest -k python_eval     # what --python-eval used to do
+
+Nothing here needs a GGUF model. The resume drafter checks deliberately
+exercise the no-model-loaded path, which is why none of them carry the
+`model` marker.
 """
 
 from __future__ import annotations
 
-import argparse
-import sys
-import time
-from datetime import datetime
-from pathlib import Path
+import pytest
+
+from persistent_memory import KNOWN_CATEGORIES
+from tools import cve_lookup
+from tools.python_eval import PythonEvalTool
+from tools.resume_drafter import ResumeDrafterTool
+from tools.resume_intel import (
+    extract_certs, cert_matches,
+    extract_required_certs, extract_clearance,
+)
+
+# In the old harness an import failure was caught per subsystem and
+# reported as one more failing check. Under pytest a bad import is a
+# collection error, which is louder and harder to miss, so the six
+# "import X" checks are not reimplemented as tests.
 
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "src"
+# ---------------------------------------------------------------- db
+
+def test_open_storage_db(memory_db):
+    """PersistentMemory constructs and creates its database file.
+
+    The original check called `get_persistent_memory()` and reported the
+    filename it opened; the assertion was that neither the connection nor
+    the schema script raised. `memory_db` points at tmp_path instead of
+    the user's real data/storage.db.
+    """
+    assert memory_db.db_path.exists()
 
 
-# ---------------------------------------------------------------- logging
-
-class Reporter:
-    def __init__(self):
-        self.failures: list[tuple[str, str]] = []
-        self.passes: list[str] = []
-        self.t_start = time.monotonic()
-
-    def _stamp(self) -> str:
-        return datetime.now().strftime("%H:%M:%S")
-
-    def section(self, name: str):
-        bar = "=" * 70
-        print(f"\n{bar}\n {name}\n{bar}", flush=True)
-
-    def step(self, msg: str):
-        print(f"[{self._stamp()}] · {msg}", flush=True)
-
-    def ok(self, label: str, detail: str = ""):
-        suffix = f"  ({detail})" if detail else ""
-        print(f"[{self._stamp()}] ✓ {label}{suffix}", flush=True)
-        self.passes.append(label)
-
-    def fail(self, label: str, detail: str = ""):
-        suffix = f"  ({detail})" if detail else ""
-        print(f"[{self._stamp()}] ✗ FAIL: {label}{suffix}", flush=True)
-        self.failures.append((label, detail))
-
-    def summary(self):
-        elapsed = time.monotonic() - self.t_start
-        bar = "=" * 70
-        print(f"\n{bar}\n Summary\n{bar}")
-        print(f"  passed:   {len(self.passes)}")
-        print(f"  failed:   {len(self.failures)}")
-        print(f"  elapsed:  {elapsed:.1f}s")
-        if self.failures:
-            print("\n  FAILURES:")
-            for label, detail in self.failures:
-                print(f"    ✗ {label}  {detail}")
-        else:
-            print("\n  ALL GREEN")
-
-
-# ---------------------------------------------------------------- checks
-
-def check_db(rep: Reporter):
-    rep.section("DB / PersistentMemory")
-    import os
-    os.chdir(str(SRC))
-    try:
-        from persistent_memory import get_persistent_memory, KNOWN_CATEGORIES
-    except Exception as exc:
-        rep.fail("import persistent_memory", repr(exc))
-        return
-
-    rep.step("opening storage.db")
-    try:
-        pm = get_persistent_memory()
-        rep.ok("open storage.db", f"path={pm.db_path.name}")
-    except Exception as exc:
-        rep.fail("open storage.db", repr(exc))
-        return
-
-    rep.step(f"verifying category enum has {len(KNOWN_CATEGORIES)} known categories")
+def test_category_enum_complete():
     expected = {"preference", "fact", "instruction", "context",
                 "goal", "certification", "application_history"}
-    missing = expected - set(KNOWN_CATEGORIES)
-    if missing:
-        rep.fail("category enum complete", f"missing: {missing}")
-    else:
-        rep.ok("category enum complete", f"{KNOWN_CATEGORIES}")
-
-    rep.step("write+read+forget round-trip")
-    try:
-        row_id = pm.put("fact", "_test_omnigab_marker",
-                        "sentinel value", source="test")
-        val = pm.get("fact", "_test_omnigab_marker")
-        if val != "sentinel value":
-            rep.fail("round-trip read", f"expected sentinel, got {val!r}")
-        else:
-            removed = pm.forget("fact", "_test_omnigab_marker")
-            if removed != 1:
-                rep.fail("round-trip forget", f"removed={removed}")
-            else:
-                rep.ok("write+read+forget", f"row_id={row_id}")
-    except Exception as exc:
-        rep.fail("round-trip", repr(exc))
-
-    rep.step("recent_applications query")
-    try:
-        rows = pm.recent_applications(limit=5)
-        rep.ok("recent_applications", f"{len(rows)} rows on file")
-    except Exception as exc:
-        rep.fail("recent_applications", repr(exc))
-
-    rep.step("snapshot_for_prompt")
-    try:
-        snap = pm.snapshot_for_prompt(max_facts=10)
-        rep.ok("snapshot_for_prompt",
-               f"{len(snap)} chars, prefix={snap[:60]!r}" if snap
-               else "empty (no facts yet)")
-    except Exception as exc:
-        rep.fail("snapshot_for_prompt", repr(exc))
+    assert expected <= set(KNOWN_CATEGORIES)
 
 
-def check_cert_filter(rep: Reporter):
-    rep.section("Cert + Clearance extraction")
-    try:
-        from tools.resume_intel import (
-            extract_certs, cert_matches,
-            extract_required_certs, extract_clearance,
-        )
-    except Exception as exc:
-        rep.fail("import resume_intel", repr(exc))
-        return
-
-    sample_resume = ("Cooper Preston\n"
-                     "CompTIA Security+ (SY0-701), Network+, A+.\n"
-                     "AWS Certified Cloud Practitioner.")
-    rep.step("extract_certs from sample resume")
-    certs = extract_certs(sample_resume)
-    expected = {"Security+", "Network+", "A+", "AWS CCP"}
-    missing = expected - set(certs)
-    if missing:
-        rep.fail("extract_certs", f"missing {missing} (got {certs})")
-    else:
-        rep.ok("extract_certs", f"{certs}")
-
-    job_text = (
-        "Required: Active Top Secret/SCI clearance with CI poly. "
-        "Must hold Security+ or CySA+. AWS Cloud Practitioner desirable. "
-        "Familiarity with TS/SCI environments required."
-    )
-
-    rep.step("extract_required_certs from sample job")
-    req = extract_required_certs(job_text)
-    if "Security+" in req and "CySA+" in req:
-        rep.ok("extract_required_certs", f"{req}")
-    else:
-        rep.fail("extract_required_certs", f"got {req}")
-
-    rep.step("extract_clearance — TS/SCI w/ poly")
-    clr = extract_clearance(job_text)
-    if clr in ("Polygraph (CI)", "TS/SCI"):
-        rep.ok("extract_clearance", f"{clr}")
-    else:
-        rep.fail("extract_clearance", f"expected CI poly or TS/SCI, got {clr!r}")
-
-    rep.step("extract_clearance — Public Trust")
-    clr2 = extract_clearance("This is a Public Trust position, no clearance required.")
-    if clr2 == "None / Public Trust":
-        rep.ok("clearance: public trust")
-    else:
-        rep.fail("clearance: public trust", f"got {clr2!r}")
-
-    rep.step("cert_matches user-cert ↔ job overlap")
-    user = ["Security+", "Network+", "A+", "AWS CCP"]
-    overlap = cert_matches(user, job_text)
-    if "Security+" in overlap and "AWS CCP" in overlap:
-        rep.ok("cert_matches", f"{overlap}")
-    else:
-        rep.fail("cert_matches", f"got {overlap}")
+def test_write_read_forget_round_trip(memory_db):
+    memory_db.put("fact", "_test_omnigab_marker",
+                  "sentinel value", source="test")
+    assert memory_db.get("fact", "_test_omnigab_marker") == "sentinel value"
+    assert memory_db.forget("fact", "_test_omnigab_marker") == 1
 
 
-def check_python_eval(rep: Reporter):
-    rep.section("python_eval sandbox")
-    try:
-        from tools.python_eval import PythonEvalTool
-    except Exception as exc:
-        rep.fail("import python_eval", repr(exc))
-        return
-    tool = PythonEvalTool()
+def test_recent_applications_query(memory_db):
+    assert isinstance(memory_db.recent_applications(limit=5), list)
 
-    rep.step("arithmetic")
-    r = tool.run({"code": "print(17 * 23 + 5)"})
-    if r.get("ok") and r.get("stdout", "").strip() == "396":
-        rep.ok("arithmetic", "stdout=396")
-    else:
-        rep.fail("arithmetic", f"got {r}")
 
-    rep.step("network is blocked")
-    r = tool.run({
+def test_snapshot_for_prompt(memory_db):
+    assert isinstance(memory_db.snapshot_for_prompt(max_facts=10), str)
+
+
+# ------------------------------------------- cert + clearance extraction
+
+SAMPLE_RESUME = ("Cooper Preston\n"
+                 "CompTIA Security+ (SY0-701), Network+, A+.\n"
+                 "AWS Certified Cloud Practitioner.")
+
+JOB_TEXT = (
+    "Required: Active Top Secret/SCI clearance with CI poly. "
+    "Must hold Security+ or CySA+. AWS Cloud Practitioner desirable. "
+    "Familiarity with TS/SCI environments required."
+)
+
+
+def test_extract_certs():
+    certs = extract_certs(SAMPLE_RESUME)
+    assert {"Security+", "Network+", "A+", "AWS CCP"} <= set(certs)
+
+
+def test_extract_required_certs():
+    req = extract_required_certs(JOB_TEXT)
+    assert "Security+" in req and "CySA+" in req
+
+
+def test_extract_clearance_ts_sci_with_poly():
+    assert extract_clearance(JOB_TEXT) in ("Polygraph (CI)", "TS/SCI")
+
+
+def test_extract_clearance_public_trust():
+    clearance = extract_clearance(
+        "This is a Public Trust position, no clearance required.")
+    assert clearance == "None / Public Trust"
+
+
+def test_cert_matches_user_certs_against_job():
+    overlap = cert_matches(["Security+", "Network+", "A+", "AWS CCP"], JOB_TEXT)
+    assert "Security+" in overlap and "AWS CCP" in overlap
+
+
+# ------------------------------------------------------ python_eval sandbox
+
+def test_python_eval_arithmetic():
+    result = PythonEvalTool().run({"code": "print(17 * 23 + 5)"})
+    assert result.get("ok") and result.get("stdout", "").strip() == "396"
+
+
+def test_python_eval_blocks_network():
+    # Offline by construction, so this is not an integration test: the
+    # sandbox patches socket.getaddrinfo before the user code runs, so the
+    # urlopen call fails without a packet ever leaving the machine.
+    result = PythonEvalTool().run({
         "code": "import urllib.request; urllib.request.urlopen('http://example.com')"
     })
-    if (not r.get("ok")) and "network access disabled" in r.get("stderr", ""):
-        rep.ok("network blocked")
-    else:
-        rep.fail("network blocked", f"stderr={r.get('stderr', '')[:200]}")
-
-    rep.step("timeout fires")
-    r = tool.run({"code": "import time; time.sleep(60)", "timeout_s": 2})
-    if r.get("timed_out"):
-        rep.ok("timeout fires", "2s budget killed sleep(60)")
-    else:
-        rep.fail("timeout fires", f"got {r}")
+    assert (not result.get("ok")) and \
+        "network access disabled" in result.get("stderr", "")
 
 
-def check_cve(rep: Reporter):
-    rep.section("cve_lookup (NIST NVD + CISA KEV)")
-    try:
-        from tools.cve_lookup import CveLookupTool
-    except Exception as exc:
-        rep.fail("import cve_lookup", repr(exc))
-        return
-    tool = CveLookupTool()
+def test_python_eval_timeout_fires():
+    result = PythonEvalTool().run({"code": "import time; time.sleep(60)",
+                                   "timeout_s": 2})
+    assert result.get("timed_out")
 
-    rep.step("CISA KEV catalog cached download + parse")
-    r = tool.run({"action": "kev_recent", "days": 30})
-    if r.get("ok") and isinstance(r.get("entries"), list):
-        rep.ok("kev_recent", f"{r.get('count', 0)} entries in last 30d")
-    else:
-        rep.fail("kev_recent", f"got {r}")
 
-    rep.step("KEV keyword search (fortinet)")
-    r = tool.run({"action": "kev_search", "keyword": "fortinet"})
-    if r.get("ok") and r.get("match_count", 0) > 0:
-        rep.ok("kev_search", f"{r['match_count']} fortinet hits")
-    else:
-        rep.fail("kev_search", f"got {r}")
+# ------------------------------------------- cve_lookup (NVD + CISA KEV)
 
-    rep.step("NVD lookup for CVE-2024-3094")
-    r = tool.run({"action": "cve", "cve_id": "CVE-2024-3094"})
+@pytest.fixture(scope="module")
+def cve_tool(tmp_path_factory):
+    """CveLookupTool with its KEV cache redirected out of the repository.
+
+    cve_lookup caches the roughly 1 MB CISA catalog at
+    data/kev_catalog.json for 24 hours, and a test must not write into the
+    user's data directory. Module scoped, with a manual MonkeyPatch
+    context because the `monkeypatch` fixture is function scoped: sharing
+    one cache file across the three checks below keeps this to a single
+    catalog download, which is what the real tool does too.
+    """
+    cache = tmp_path_factory.mktemp("kev") / "kev_catalog.json"
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(cve_lookup, "KEV_CACHE", cache)
+        yield cve_lookup.CveLookupTool()
+
+
+@pytest.mark.integration
+def test_kev_recent(cve_tool):
+    result = cve_tool.run({"action": "kev_recent", "days": 30})
+    assert result.get("ok") and isinstance(result.get("entries"), list)
+
+
+@pytest.mark.integration
+def test_kev_search_by_keyword(cve_tool):
+    result = cve_tool.run({"action": "kev_search", "keyword": "fortinet"})
+    assert result.get("ok") and result.get("match_count", 0) > 0
+
+
+@pytest.mark.integration
+def test_nvd_lookup_honours_the_tool_contract(cve_tool):
     # The tool contract: ALWAYS return a dict with ok=True/False and a
-    # human-readable error on failure — never throw. NVD itself is
+    # human-readable error on failure, never throw. NVD itself is
     # unreliable (5-req/30s rate limit, frequent slow responses, periodic
     # 503s), so a clean error counts as a contract pass.
-    if r.get("ok") and r.get("found"):
-        severity = (r.get("cvss") or {}).get("severity")
-        rep.ok("cve lookup", f"severity={severity}")
-    elif isinstance(r, dict) and r.get("ok") is False and r.get("error"):
-        rep.ok("cve lookup",
-               f"clean error returned: {r['error'][:80]!r}")
-    else:
-        rep.fail("cve lookup", f"got {r}")
+    result = cve_tool.run({"action": "cve", "cve_id": "CVE-2024-3094"})
+    assert (result.get("ok") and result.get("found")) or \
+        (result.get("ok") is False and result.get("error"))
 
 
-def check_scraper(rep: Reporter, max_jobs: int):
-    rep.section(f"USAJOBS scraper (max_jobs={max_jobs})")
-    try:
-        import os
-        os.chdir(str(SRC))
-        from tools.usajobs_search import UsaJobsSearchTool
-    except Exception as exc:
-        rep.fail("import usajobs_search", repr(exc))
-        return
+# ---------------------------------------------------- USAJOBS scraper
 
-    tool = UsaJobsSearchTool(
-        embedder=None, resume_text_getter=lambda: None,
-        resume_certs_getter=lambda: [],
+@pytest.fixture(scope="module")
+def scraper_result(usajobs_tool):
+    """One live USAJOBS query, shared by the four checks below.
+
+    The old harness ran the query once and asserted four things about the
+    single result. A live query costs about 30 seconds, so a fixture per
+    test would be four times the network traffic for the same coverage.
+    max_jobs=3 was the default of the deleted --max flag.
+    """
+    return usajobs_tool.run({"query": "IT Specialist", "max_jobs": 3})
+
+
+@pytest.mark.integration
+def test_scraper_runs(scraper_result):
+    assert scraper_result.get("ok")
+
+
+@pytest.mark.integration
+def test_scraper_urls_are_absolute_and_canonical(scraper_result):
+    bad = [job.get("url", "") for job in scraper_result.get("results", [])
+           if not job.get("url", "").startswith("https://www.usajobs.gov/job/")]
+    assert not bad
+
+
+@pytest.mark.integration
+def test_scraper_keeps_only_open_listings(scraper_result):
+    closed = [job for job in scraper_result.get("results", [])
+              if job.get("status") == "closed"]
+    assert not closed
+
+
+@pytest.mark.integration
+def test_scraper_surfaces_job_side_cert_and_clearance(scraper_result):
+    saw_required = any("required_certs" in job or "clearance_required" in job
+                       for job in scraper_result.get("results", []))
+    # A query that returned nothing has no listing to inspect, which the
+    # original check treated as a pass rather than a failure.
+    assert saw_required or scraper_result.get("found", 0) == 0
+
+
+# ------------------------------------------ resume drafter (no model call)
+
+@pytest.fixture
+def no_resume_ingest(monkeypatch):
+    """Stop the drafter's best-effort resume ingest from writing to the repo.
+
+    `ResumeDrafterTool.run()` starts by calling `ingest_resume()`, which
+    rewrites baseresume.txt in the project root whenever a newer
+    baseresume.pdf or .docx is sitting next to it. Correct for the app,
+    out of bounds for a test. The import inside `run()` is a function-level
+    `from resume_ingest import ingest_resume`, so replacing the attribute
+    on the module is enough to intercept it.
+    """
+    import resume_ingest
+    monkeypatch.setattr(resume_ingest, "ingest_resume", lambda *a, **kw: None)
+
+
+@pytest.fixture
+def drafter():
+    return ResumeDrafterTool(
+        generator_getter=lambda: None,
+        persistent_memory=None,
+        resume_text_getter=lambda: None,
     )
 
-    rep.step("running query 'IT Specialist' (no embedder)")
-    t0 = time.monotonic()
-    try:
-        r = tool.run({"query": "IT Specialist", "max_jobs": max_jobs})
-    except Exception as exc:
-        rep.fail("scraper run", repr(exc))
-        return
-    elapsed = time.monotonic() - t0
 
-    if not r.get("ok"):
-        rep.fail("scraper ok", f"{r.get('error', '?')}")
-        return
-    found = r.get("found", 0)
-    rep.ok("scraper run", f"{found} listings in {elapsed:.1f}s")
-
-    rep.step("verifying all URLs are absolute USAJOBS posting URLs")
-    bad = [j.get("url", "") for j in r.get("results", [])
-           if not (j.get("url", "").startswith("https://www.usajobs.gov/job/"))]
-    if bad:
-        rep.fail("URL shape", f"{len(bad)} malformed URLs: {bad[:3]}")
-    else:
-        rep.ok("URL shape", f"all {found} URLs absolute + canonical")
-
-    rep.step("verifying every kept listing has status='open'")
-    closed = [j for j in r.get("results", []) if j.get("status") == "closed"]
-    if closed:
-        rep.fail("status filter", f"{len(closed)} closed listings slipped through")
-    else:
-        rep.ok("status filter", "no closed listings in keepers")
-
-    rep.step("verifying job-side cert/clearance fields surfaced")
-    saw_required = any("required_certs" in j or "clearance_required" in j
-                       for j in r.get("results", []))
-    if saw_required or found == 0:
-        rep.ok("job cert/clearance extraction",
-               "at least one job carried required_certs or clearance_required"
-               if saw_required else "no listings to inspect")
-    else:
-        rep.fail("job cert/clearance extraction",
-                 "none of the returned jobs had required_certs or clearance_required")
+def test_drafter_accepts_none_dependencies(drafter):
+    # The check is that the constructor tolerates None for every injected
+    # dependency rather than raising. There is nothing else to look at on
+    # a fresh instance.
+    assert drafter is not None
 
 
-def check_resume_builder(rep: Reporter):
-    rep.section("Resume drafter (smoke, no model call)")
-    try:
-        import os
-        os.chdir(str(SRC))
-        from tools.resume_drafter import ResumeDrafterTool
-    except Exception as exc:
-        rep.fail("import resume_drafter", repr(exc))
-        return
+def test_drafter_rejects_missing_inputs(drafter, no_resume_ingest):
+    result = drafter.run({})
+    assert (not result.get("ok")) and \
+        "provide either job_url or job_description" in result.get("error", "")
 
-    rep.step("instantiate with no generator (should not crash)")
-    try:
-        tool = ResumeDrafterTool(
-            generator_getter=lambda: None,
-            persistent_memory=None,
-            resume_text_getter=lambda: None,
-        )
-        rep.ok("instantiate", "constructor accepted None deps")
-    except Exception as exc:
-        rep.fail("instantiate", repr(exc))
-        return
 
-    rep.step("missing inputs returns clean error")
-    r = tool.run({})
-    if (not r.get("ok")) and "provide either job_url or job_description" in r.get("error", ""):
-        rep.ok("input validation", "rejects empty input")
-    else:
-        rep.fail("input validation", f"got {r}")
+def test_drafter_validation_chain_reaches_resume_or_model(drafter,
+                                                          no_resume_ingest):
+    # The drafter falls back to scanning data/docs/ for active_resume.* so
+    # when the user already has a resume on disk we hit the "no model
+    # loaded" path instead. Accept either error as proof that the
+    # validation chain reached the resume/model-load stage cleanly.
+    result = drafter.run(
+        {"job_description": "Sample federal IT specialist posting."})
+    error = (result.get("error") or "").lower()
+    assert (not result.get("ok")) and \
+        ("no active resume" in error or "no model loaded" in error)
 
-    rep.step("with description but no resume → resume-missing error")
-    # The drafter falls back to scanning data/docs/ for active_resume.* —
-    # so when the user already has a resume on disk, we hit the "no model
-    # loaded" path instead. Accept either error as proof that the validation
-    # chain reached the resume/model-load stage cleanly.
-    r = tool.run({"job_description": "Sample federal IT specialist posting."})
-    err = (r.get("error") or "").lower()
-    if (not r.get("ok")) and ("no active resume" in err
-                              or "no model loaded" in err):
-        rep.ok("validation chain reaches resume/model check",
-               f"error={r.get('error')!r}")
-    else:
-        rep.fail("validation chain", f"got {r}")
 
-    rep.step("with description + resume + no model → graceful 'no model loaded'")
-    tool2 = ResumeDrafterTool(
+def test_drafter_fails_gracefully_with_no_model(no_resume_ingest):
+    tool = ResumeDrafterTool(
         generator_getter=lambda: None,
         persistent_memory=None,
         resume_text_getter=lambda: "Cooper Preston. Security+. Active student.",
     )
-    r = tool2.run({"job_description": "Federal IT specialist (AI). GS-12."})
-    if (not r.get("ok")) and "no model loaded" in r.get("error", ""):
-        rep.ok("no-model graceful fail")
-    else:
-        rep.fail("no-model graceful fail", f"got {r}")
-
-
-# ---------------------------------------------------------------- main
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="omnigab modular test suite")
-    parser.add_argument("--all", action="store_true", help="run every check")
-    parser.add_argument("--db", action="store_true", help="storage.db + persistent_memory")
-    parser.add_argument("--cert-filter", action="store_true", help="cert + clearance extraction")
-    parser.add_argument("--python-eval", action="store_true", help="python_eval sandbox")
-    parser.add_argument("--cve", action="store_true", help="cve_lookup NVD + KEV")
-    parser.add_argument("--scraper", action="store_true", help="USAJOBS live scrape")
-    parser.add_argument("--resume-builder", action="store_true",
-                        help="resume drafter smoke tests")
-    parser.add_argument("--max", type=int, default=3,
-                        help="max_jobs for scraper test (default 3)")
-    args = parser.parse_args()
-
-    # If no flags, default to --all.
-    any_flag = any([args.db, args.cert_filter, args.python_eval, args.cve,
-                    args.scraper, args.resume_builder])
-    if not any_flag and not args.all:
-        args.all = True
-
-    rep = Reporter()
-
-    if args.all or args.db:
-        check_db(rep)
-    if args.all or args.cert_filter:
-        check_cert_filter(rep)
-    if args.all or args.python_eval:
-        check_python_eval(rep)
-    if args.all or args.cve:
-        check_cve(rep)
-    if args.all or args.scraper:
-        check_scraper(rep, args.max)
-    if args.all or args.resume_builder:
-        check_resume_builder(rep)
-
-    rep.summary()
-    return len(rep.failures)
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    result = tool.run({"job_description": "Federal IT specialist (AI). GS-12."})
+    assert (not result.get("ok")) and \
+        "no model loaded" in result.get("error", "")

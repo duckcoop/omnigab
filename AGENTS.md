@@ -118,11 +118,11 @@ omnigab/
 │
 ├── skills/                      drop-in skills (skill.json + skill.py)
 ├── docs/                        SETUP_GUIDE, EXTRACTION, TODOS
-├── tests/
-│   ├── test_omnigab.py          custom harness, argparse flags
-│   ├── test_gate.py             20 assertions, module-level
-│   ├── test_usajobs.py
-│   └── evolution_benchmark.py
+├── tests/                       pytest, markers in pyproject.toml
+│   ├── conftest.py              tmp cwd, tmp db, USAJOBS tool fixtures
+│   ├── test_gate.py             20 parametrized gate cases
+│   ├── test_omnigab.py          subsystem checks, 7 of them integration
+│   └── test_usajobs.py          live USAJOBS run, integration
 └── data/                        gitignored user state
 ```
 
@@ -137,12 +137,7 @@ diffs.
   top-level names (`from core.model_manager import ...`,
   `from security import ...`). There is no `pyproject.toml` and no
   `setup.py`.
-- `os.chdir` is called at four sites under `tests/`: three in
-  `test_omnigab.py` (lines 79, 271, 328) and one in `test_usajobs.py`
-  (line 61). Global mutable state that leaks between tests.
 - There is no `.github/` directory. CI has never run.
-- Two bespoke test harnesses, neither of them pytest, neither
-  discoverable, no coverage measurement.
 - `src/core/agent.py` holds an approximately 5,000 word system prompt
   as a module-level string constant, mixing job-search product logic
   into the core loop. It also contains two contradictory sections about
@@ -161,22 +156,22 @@ diffs.
 
 ## 4. Commands
 
-Current state, before the pytest migration lands:
-
-```bash
-venv\Scripts\python.exe tests\test_omnigab.py --all
-venv\Scripts\python.exe tests\test_gate.py
-venv\Scripts\python.exe -m flake8 src tests
-```
-
-After Phase 1 PR1 lands, the commands become:
-
 ```bash
 pytest                       # unit only, no network, no model, no GPU
 pytest -m integration        # live network, opt in
+pytest -m model              # needs a real GGUF on disk (nothing yet)
 pytest --cov=src --cov-report=term-missing
 flake8 src tests
+verify.bat                   # flake8 + pytest + coverage, one exit code
 ```
+
+On Windows, prefix with `venv\Scripts\python.exe -m` if the venv is not
+active. `verify.bat` does that for you and is the gate to run before
+accepting any change; `verify.sh` is its Linux and macOS twin.
+
+Selection replaced the old per-subsystem argparse flags:
+`--python-eval` is `pytest -k python_eval`, `--all` is the default run
+plus `pytest -m integration`.
 
 When you change the way tests are run, update this section in the same
 commit. An AGENTS.md that lies is worse than no AGENTS.md.

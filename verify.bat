@@ -32,23 +32,15 @@ echo ============================================================
 "%PY%" -m pytest --cov=src --cov-report=term-missing
 set PYTEST_RC=%ERRORLEVEL%
 
-REM Exit 5 means pytest collected no tests. That is the expected state
-REM until PR1 lands, because none of the four files under tests/ define
-REM a test_ function yet. Warn rather than fail, so this gate is usable
-REM during PR0a. Delete this branch once PR1 is merged, so that "no
-REM tests collected" goes back to being a real failure.
-if "%PYTEST_RC%"=="5" (
-    echo.
-    echo [verify] WARNING: pytest collected no tests. Expected until PR1.
-    goto :green
-)
+REM Any non-zero code is a failure, including 5 (no tests collected).
+REM PR1 tolerated 5 while tests/ held no test_ function; now that the
+REM suite is real, "collected nothing" means collection broke.
 if not "%PYTEST_RC%"=="0" (
     echo.
     echo [verify] FAILED: pytest ^(exit %PYTEST_RC%^)
     exit /b 1
 )
 
-:green
 echo.
 echo ============================================================
 echo  ALL GREEN

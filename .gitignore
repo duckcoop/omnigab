@@ -40,6 +40,13 @@ __pycache__/
 build/
 dist/
 
+# Test run artifacts. verify.bat passes --cov, so every run of the gate
+# leaves a binary .coverage database behind, and pytest caches the last
+# failed set in .pytest_cache/.
+.coverage
+.coverage.*
+.pytest_cache/
+
 # Local agent config (not for distribution)
 .claude/
 

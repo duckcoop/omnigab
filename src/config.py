@@ -107,13 +107,20 @@ def save_selected_model(filename: str) -> None:
 CONTEXT_STATE_PATH = MODEL_STATE_PATH.parent / "context_override.json"
 
 # Bounds for the user-adjustable context window. The floor is what the
-# agent needs to hold its system prompt plus a reply. The ceiling was set
-# to what Qwen2.5 was trained for and has not been re-derived for the
-# Qwen3.5 catalog, so treat 32768 as a conservative cap rather than a
-# measured limit: quality degrades past a model's trained window even when
-# the hardware allows it.
+# agent needs to hold its system prompt plus a reply. The ceiling is the
+# window the model was actually trained for, read out of the GGUF metadata
+# rather than assumed: both Qwen3.5 quants report
+# qwen35.context_length = 262144. Quality degrades past a model's trained
+# window even when the hardware allows it, so that is the right ceiling.
+#
+# It was 32768, which was Qwen2.5's trained window and is an 8x
+# underestimate here. The memory is not the constraint it looks like:
+# measured KV cache on this catalog is about 16 MB per 1024 tokens, so the
+# full 262144 costs roughly 4.1 GB and the 9B fits weights plus that inside
+# 12 GB. Smaller cards cannot, which is what optimal_context() is for; this
+# constant is only the ceiling on what a user may ask for.
 CONTEXT_MIN = 2048
-CONTEXT_MAX = 32768
+CONTEXT_MAX = 262144
 
 
 def load_context_override() -> int | None:

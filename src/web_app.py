@@ -352,12 +352,21 @@ def _tool_calling_capability(model_filename: str) -> dict:
     tools were broken and pointed them at models no longer on offer. A
     lookup fails loudly and obviously instead.
     """
+    # Both are "good" on measurement rather than on size. Each was run
+    # through the real agent loop twice: 4/4 on simple python_eval calls
+    # with no spurious call on a control prompt, and 5/6 on the tools with
+    # large schemas (usajobs_search, cve_lookup's action enum), picking the
+    # right tool and inventing no argument names. They scored identically,
+    # so labelling the 4B weaker would be a guess contradicted by the data.
+    #
+    # The shared 6th failure is the resume drafter, which neither model
+    # routes to. That is a tool-description problem rather than a model
+    # one, and it is written up in docs/TODOS.md.
     tiers = {
         "Qwen_Qwen3.5-9B-Q4_K_M.gguf": {
             "tier": "good", "note": "tool calling: reliable"},
         "Qwen_Qwen3.5-4B-Q4_K_M.gguf": {
-            "tier": "marginal",
-            "note": "tool calling: usually fine, switch to 9B if a tool is skipped"},
+            "tier": "good", "note": "tool calling: reliable"},
     }
     return tiers.get(model_filename or "", {
         "tier": "poor",

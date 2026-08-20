@@ -39,6 +39,13 @@ Each item was considered and explicitly deferred — not forgotten.
 - **Context:** Needs cross-document obligation matching — same machinery the auditor needs; build them together.
 - **Blocked by:** reconciliation design (above).
 
+## Neither catalog model routes to `draft_federal_resume`
+
+- **What:** Run through the real agent loop with the full tool catalog registered, both Qwen3.5 4B and 9B fail the same prompt: "Draft a federal resume for this posting: GS-12 IT Specialist (INFOSEC), Department of the Air Force, duties include RMF and incident response." The 4B calls no tool at all and answers from the model. The 9B calls `usajobs_search` instead. Every other case in the same probe passed on both models (5/6 each), including `usajobs_search` with six parameters and `cve_lookup`'s action enum, so this is not a large-schema problem.
+- **Why:** The drafter is one of the app's headline capabilities and the agent cannot reliably reach it. Worse, the 9B's failure is the confusing kind: it silently substitutes a job search for a resume draft, so the user gets a plausible-looking answer to a question they did not ask.
+- **Context:** Found while measuring tool-calling for the Qwen3.5 catalog swap, using a probe that stubs execution and inspects the emitted call. The likely cause is `ResumeDrafterTool.description`, which opens "Generate a tailored federal-style resume draft for a specific USAJOBS posting" and goes on to mention USAJOBS twice more plus a `match_percent >= 85` auto-trigger heuristic. Against `usajobs_search`, whose description is about finding USAJOBS postings, the two read as neighbours and the router picks the more prominent one. That is a tool-description problem, not a model one, which is why swapping models did not fix it and why it was left alone rather than folded into a catalog change.
+- **Blocked by:** nothing, but it belongs with PR4, which moves the system prompt into files and is the natural place to look at how tools describe themselves. A fix wants the same probe as its test, otherwise it is unfalsifiable.
+
 ## Flat top-level module names now reach site-packages
 
 - **What:** PR0 installs `src/` with `package-dir = {"" = "src"}`, so `config`, `core`, `tools`, `jobs`, `security`, `generator`, `ingest`, `embeddings`, `verifier`, and `vectorstore` become importable top-level names in any environment that installs omnigab. Several are generic enough to collide with an unrelated distribution.

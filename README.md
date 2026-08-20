@@ -74,7 +74,7 @@ Pick one in the Models tab. Bigger models answer better and use tools far more r
 
 Both sizes are measured, not estimated: those are the actual file sizes on disk.
 
-Both handled tool calling correctly in testing, which is why the topbar reads `tools: ready` on the 9B rather than the warning older, smaller models earned. Sizes below 4B are not offered, because a model that cannot call a tool reliably cannot do most of what this app is for.
+Both read `tools: ready` in the topbar, and both earned it the same way: run through the real agent loop, each picked the right tool and filled its arguments correctly on 4 of 4 simple calls and 5 of 6 large-schema calls, with no tool called on a plain greeting. They scored identically, so the 4B is not labelled weaker. Sizes below 4B are not offered, because a model that cannot call a tool reliably cannot do most of what this app is for.
 
 ### Context window
 

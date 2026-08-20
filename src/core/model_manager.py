@@ -43,6 +43,17 @@ MODEL_PROFILE: dict[str, dict] = {
 }
 _DEFAULT_PROFILE = {"weight_gb": 9.0, "ctx": 4096, "batch": 512}
 
+# KV cache cost with type_k/type_v = q8_0, measured on an RTX 4070 SUPER by
+# loading each model at n_ctx 4096 and 16384 and taking the VRAM slope:
+# 16.2 MB per 1024 tokens on the 9B, 16.6 on the 4B.
+#
+# Identical across both, which is not an accident and not a rounding
+# artifact: the two share a KV geometry (33 layers, 4 KV heads, 256 total
+# KV dim), so cache cost does not scale with parameter count within this
+# family. Code that assumes a bigger model means a bigger cache is wrong
+# here.
+KV_CACHE_GB_PER_1K = 0.016
+
 
 def _env_int(name: str, default: int) -> int:
     val = os.environ.get(name)
@@ -215,10 +226,11 @@ def default_gpu_layers() -> int:
 def optimal_context(filename: str, vram_gb: int) -> tuple[int, int]:
     """Pick (n_ctx, n_batch) so KV cache fits in VRAM without swapping.
 
-    On a 12 GB card (RTX 4070 Super) with the 14B Q4 (~9 GB), this leaves
-    ~3 GB for KV cache → 8192 tokens is safe. On 8 GB cards we drop the
-    14B context to 4096 to avoid the system-RAM spillover that pins
-    inference at 1-3 tok/s.
+    On a 12 GB card (RTX 4070 Super) with the 9B Q4 (~6.2 GB), this leaves
+    ~5.5 GB for KV cache, far more than the 8192-token default needs at
+    the measured 16 MB per 1024 tokens. The bands below stay conservative
+    anyway: on smaller cards the cost of guessing high is system-RAM
+    spillover, which pins inference at 1-3 tok/s.
     """
     profile = MODEL_PROFILE.get(filename, _DEFAULT_PROFILE)
     weight_gb = profile["weight_gb"]

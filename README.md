@@ -27,7 +27,7 @@ That constraint shapes everything else here.
 
 ## What it does
 
-**Chat with a real model, offline.** A Qwen2.5 model runs locally through llama.cpp, on your GPU if you have an NVIDIA card and on your CPU if you do not.
+**Chat with a real model, offline.** A Qwen3.5 model runs locally through llama.cpp, on your GPU if you have an NVIDIA card and on your CPU if you do not.
 
 **Answer questions from your own documents.** Drop PDFs, Markdown, text, config files, or logs into the Docs tab. They are chunked, embedded, and indexed into a local vector store. Ask a question and it retrieves the relevant passages and answers from them, so you get grounded answers with sources instead of guesses.
 
@@ -55,7 +55,7 @@ cd omnigab
 setup.bat
 ```
 
-`setup.bat` finds your Python, creates a virtual environment, detects your GPU, installs `llama-cpp-python` with the matching CUDA wheel, wires in the CUDA runtime DLLs, installs dependencies, downloads the default model (~1.1 GB), builds the document index, and launches the app.
+`setup.bat` finds your Python, creates a virtual environment, detects your GPU, installs `llama-cpp-python` with the matching CUDA wheel, wires in the CUDA runtime DLLs, installs dependencies, downloads the default model (~3 GB), builds the document index, and launches the app.
 
 The first run downloads a few GB. Later runs start in seconds.
 
@@ -69,18 +69,18 @@ Pick one in the Models tab. Bigger models answer better and use tools far more r
 
 | Model | Disk | Suggested RAM | Notes |
 |---|---|---|---|
-| Qwen 2.5 1.5B | ~1.1 GB | ~4 GB | Downloaded by default. Fast, but unreliable at tool calling. |
-| Qwen 2.5 3B | ~2.1 GB | ~6 GB | Reasonable balance. |
-| Qwen 2.5 7B | ~4.4 GB | ~10 GB | First size that handles tools well. |
-| Qwen 2.5 14B | ~8.9 GB | ~16 GB | Best quality. Wants a 12 GB GPU to stay fast. |
+| Qwen 3.5 4B | ~3.0 GB | ~6 GB | Downloaded by default. Runs on a laptop without a GPU. |
+| Qwen 3.5 9B | ~6.2 GB | ~12 GB | Best quality. Auto-selected when you have 8 GB of VRAM or more. |
 
-The header reads `tools: broken` on models too small to use tools reliably. That is a real limitation of small models rather than a bug, and switching to 7B or larger resolves it.
+Both sizes are measured, not estimated: those are the actual file sizes on disk.
+
+Both handled tool calling correctly in testing, which is why the topbar reads `tools: ready` on the 9B rather than the warning older, smaller models earned. Sizes below 4B are not offered, because a model that cannot call a tool reliably cannot do most of what this app is for.
 
 ### Context window
 
 Settings → Advanced controls how much the model can hold at once. Auto sizes it to fit your GPU, and the panel shows both what is currently loaded and what your card could handle.
 
-The KV cache is quantized to q8_0, which roughly halves its memory cost. On a 12 GB card the 14B model fits 16384 tokens comfortably; 32768 spills into system RAM and slows generation to a crawl.
+The KV cache is quantized to q8_0, which roughly halves its memory cost. On a 12 GB card the 9B leaves plenty of room at 8192 tokens and has headroom above that; pushing the window until weights plus cache exceed VRAM spills into system RAM and slows generation to a crawl.
 
 ---
 
@@ -177,9 +177,9 @@ second one opts into the checks that query USAJOBS and NIST NVD live.
 | Python 3.10 to 3.12 | These have prebuilt `llama-cpp-python` CUDA wheels. Newer versions run but may lack a GPU wheel. Check "Add python.exe to PATH" when installing. |
 | Windows 10 or 11 | The setup and launch scripts are batch files. |
 | Git | To clone the repository. |
-| RAM | ~4 GB for the smallest model, ~16 GB for the 14B. |
+| RAM | ~6 GB for the 4B, ~12 GB for the 9B. |
 | NVIDIA GPU, CUDA 12.x | Optional. You do not install the CUDA Toolkit yourself; setup pulls the runtime DLLs from pip. CPU-only works, just slower. |
-| Disk | ~3 GB with the small model, ~12 GB with the 14B. |
+| Disk | ~5 GB with the 4B, ~9 GB with the 9B. |
 
 ---
 

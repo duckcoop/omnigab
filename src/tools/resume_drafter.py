@@ -153,11 +153,17 @@ class ResumeDrafterTool:
         "required": [],
     }
 
-    # The 14B is great for the chat agent but too slow for the large
-    # generation a resume draft requires (~400+s observed). The 7B at
-    # Q4 cuts that to ~80-120s with comparable quality on this template
-    # task. We hot-swap to it for the draft, then swap back.
-    PREFERRED_MODEL = "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+    # The best model in the catalog, hot-swapped in for the draft and
+    # swapped back after. A resume draft is a long generation on a
+    # template-shaped task, so quality matters more than latency here.
+    #
+    # This used to name the Qwen2.5 7B, chosen because the 14B took 400+
+    # seconds. Both are gone from the catalog, and a filename that is not
+    # in AVAILABLE_MODELS makes ensure_model_downloaded() return False, so
+    # the swap silently never happened and drafts ran on whatever was
+    # loaded. Kept pointed at the catalog's top model rather than deleted,
+    # because the hot-swap is still the right behavior.
+    PREFERRED_MODEL = "Qwen_Qwen3.5-9B-Q4_K_M.gguf"
 
     def __init__(self, *, generator_getter, persistent_memory=None,
                  resume_text_getter=None, model_manager=None):

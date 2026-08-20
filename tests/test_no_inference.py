@@ -17,6 +17,7 @@ from __future__ import annotations
 import pytest
 
 import generator
+from config import DEFAULT_GGUF_MODEL
 from core.model_manager import ModelManager
 
 
@@ -46,10 +47,13 @@ def test_model_load_raises_the_actionable_message(no_llama_cpp):
     # The real constructor, because this is exactly what web_app.startup()
     # does. No GGUF file is needed to reach the raise, which is the point
     # of checking the library before the model file in ModelManager.load().
-    # The filename is a real AVAILABLE_MODELS key so the unknown-model
-    # guard ahead of it does not fire instead.
+    #
+    # The filename comes from the catalog rather than being written out
+    # here: it has to be a real AVAILABLE_MODELS key or the unknown-model
+    # guard fires first and this tests the wrong branch. Hardcoding one is
+    # how this test broke when the catalog moved from Qwen2.5 to 3.5.
     with pytest.raises(generator.InferenceUnavailable) as caught:
-        ModelManager(initial_model="qwen2.5-1.5b-instruct-q4_k_m.gguf")
+        ModelManager(initial_model=DEFAULT_GGUF_MODEL)
 
     # Not an ImportError, and not a stack trace: a message naming the fix.
     assert not isinstance(caught.value, ImportError)

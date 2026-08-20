@@ -17,6 +17,7 @@ import threading
 import config
 from config import (
     AVAILABLE_MODELS,
+    DEFAULT_GGUF_MODEL,
     MODELS_DIR,
     CONTEXT_WINDOW,
     N_THREADS,
@@ -28,14 +29,17 @@ from config import (
 # Numbers tuned for Q4_K_M GGUFs on a single GPU. Keep n_ctx small enough
 # that model_weights + KV_cache + overhead < VRAM, otherwise llama-cpp
 # splits to system RAM and inference collapses to 1-3 tok/s.
+# weight_gb is measured from the downloaded file, not estimated. Both
+# quants came in larger than the published size class suggested (the 4B is
+# 3.01 GB, the 9B 6.17 GB), and the autotuner subtracts these from VRAM to
+# size the KV cache, so a low guess here is what pushes the cache into
+# system RAM.
 MODEL_PROFILE: dict[str, dict] = {
-    "qwen2.5-1.5b-instruct-q4_k_m.gguf": {"weight_gb": 1.1, "ctx": 8192,  "batch": 512},
-    "qwen2.5-3b-instruct-q4_k_m.gguf":   {"weight_gb": 2.1, "ctx": 8192,  "batch": 512},
-    "Qwen2.5-7B-Instruct-Q4_K_M.gguf":   {"weight_gb": 4.4, "ctx": 8192,  "batch": 1024},
-    # 14B at 8192 ctx with q8_0 KV cache (~1.5 GB) and 9 GB weights sits at
-    # ~10.5 GB on a 12 GB card — comfortable headroom, lets us push batch
-    # to 1024 for faster prompt processing.
-    "Qwen2.5-14B-Instruct-Q4_K_M.gguf":  {"weight_gb": 8.9, "ctx": 8192,  "batch": 1024},
+    "Qwen_Qwen3.5-4B-Q4_K_M.gguf": {"weight_gb": 3.0, "ctx": 8192,  "batch": 512},
+    # 9B at 8192 ctx with q8_0 KV cache (~1.1 GB) and 6.2 GB weights sits
+    # at ~7.3 GB on a 12 GB card, comfortable headroom, which is what lets
+    # us push batch to 1024 for faster prompt processing.
+    "Qwen_Qwen3.5-9B-Q4_K_M.gguf": {"weight_gb": 6.2, "ctx": 8192,  "batch": 1024},
 }
 _DEFAULT_PROFILE = {"weight_gb": 9.0, "ctx": 4096, "batch": 512}
 
@@ -125,12 +129,13 @@ def detect_ram_gb() -> int:
 # Hardware tier → recommended GGUF. Ordered from biggest to smallest;
 # we pick the largest model whose VRAM (or RAM, for CPU-only) headroom
 # fits comfortably with a 1.5 GB safety margin.
+# Two models means two tiers rather than the five the Qwen2.5 catalog
+# needed. The 9B is offered only on a GPU: at 6.2 GB of weights it runs on
+# CPU but slowly enough that a first-time user would think the app was
+# broken, and this table's job is to pick something that feels alive.
 HARDWARE_TIERS = [
-    {"min_vram_gb": 10, "model": "Qwen2.5-14B-Instruct-Q4_K_M.gguf"},
-    {"min_vram_gb": 6,  "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf"},
-    {"min_vram_gb": 4,  "model": "qwen2.5-3b-instruct-q4_k_m.gguf"},
-    {"min_vram_gb": 0, "min_ram_gb": 16, "model": "qwen2.5-3b-instruct-q4_k_m.gguf"},
-    {"min_vram_gb": 0, "min_ram_gb": 0,  "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf"},
+    {"min_vram_gb": 8, "model": "Qwen_Qwen3.5-9B-Q4_K_M.gguf"},
+    {"min_vram_gb": 0, "min_ram_gb": 0, "model": "Qwen_Qwen3.5-4B-Q4_K_M.gguf"},
 ]
 
 
@@ -156,7 +161,7 @@ def select_optimal_model() -> tuple[str, dict]:
                 "gpu_path": vram > 0,
             }
 
-    fallback = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+    fallback = DEFAULT_GGUF_MODEL
     return fallback, {
         "reason": "safety fallback",
         "vram_gb": vram, "ram_gb": ram, "gpu_path": False,

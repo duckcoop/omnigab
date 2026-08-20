@@ -340,21 +340,28 @@ async def api_ingest():
 
 
 def _tool_calling_capability(model_filename: str) -> dict:
-    """Heuristic: which Qwen sizes can reliably emit our <tool_call> syntax.
+    """Which catalog models can reliably emit our <tool_call> syntax.
 
     Returns a dict with `tier` ('good' | 'marginal' | 'poor') and a short
     human-readable note for the UI to surface in the topbar.
+
+    Keyed off the catalog rather than by substring-matching the filename
+    for "7b" and "14b", which is what this did while the catalog was
+    Qwen2.5. That version silently reported "poor" for anything it did not
+    recognise, so every Qwen3.5 filename would have told the user their
+    tools were broken and pointed them at models no longer on offer. A
+    lookup fails loudly and obviously instead.
     """
-    name = (model_filename or "").lower()
-    if "14b" in name:
-        return {"tier": "good", "note": "tool calling: reliable"}
-    if "7b" in name:
-        return {"tier": "good", "note": "tool calling: reliable"}
-    if "3b" in name:
-        return {"tier": "marginal",
-                "note": "tool calling: hit-and-miss — upgrade to 7B+ for jobs/search"}
-    return {"tier": "poor",
-            "note": "tool calling: unreliable on this model — switch to 7B or 14B"}
+    tiers = {
+        "Qwen_Qwen3.5-9B-Q4_K_M.gguf": {
+            "tier": "good", "note": "tool calling: reliable"},
+        "Qwen_Qwen3.5-4B-Q4_K_M.gguf": {
+            "tier": "marginal",
+            "note": "tool calling: usually fine, switch to 9B if a tool is skipped"},
+    }
+    return tiers.get(model_filename or "", {
+        "tier": "poor",
+        "note": "tool calling: untested on this model, results may vary"})
 
 
 @app.get("/api/status")

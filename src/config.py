@@ -32,41 +32,35 @@ SIMILARITY_THRESHOLD = 0.3
 
 # -- Generation Model (GGUF via llama-cpp) --
 # Available models (download into models/ folder):
+# Both entries are bartowski requants of the official Qwen weights. Unlike
+# Qwen2.5, the Qwen team publishes no first-party GGUFs for 3.5, so there
+# is no official repo to prefer. Bartowski was already the source for the
+# old 7B and 14B entries, ships single-file quants rather than gguf-split
+# (which hf_hub_download cannot fetch by plain filename), and mirrors the
+# upstream Apache-2.0 license.
+#
+# The doubled name in the filenames is bartowski's <org>_<model> convention,
+# not a typo. It has to match the file on the Hub exactly, because
+# ensure_model_downloaded() passes it straight to hf_hub_download.
 AVAILABLE_MODELS = {
-    "qwen2.5-1.5b-instruct-q4_k_m.gguf": {
-        "name": "Qwen 2.5 1.5B (Default)",
-        "size": "~1.1 GB",
-        "ram": "~4 GB",
-        "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-    },
-    "qwen2.5-3b-instruct-q4_k_m.gguf": {
-        "name": "Qwen 2.5 3B (Recommended)",
-        "size": "~2.1 GB",
+    "Qwen_Qwen3.5-4B-Q4_K_M.gguf": {
+        "name": "Qwen 3.5 4B (Default)",
+        "size": "~3.0 GB",
         "ram": "~6 GB",
-        "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+        "repo": "bartowski/Qwen_Qwen3.5-4B-GGUF",
     },
-    # 7B uses bartowski's single-file quant. The official Qwen repo
-    # shards the 7B Q4_K_M into two pieces (gguf-split format), which
-    # hf_hub_download can't fetch with a plain filename. Bartowski's
-    # repo is the same source we already use for the 14B.
-    "Qwen2.5-7B-Instruct-Q4_K_M.gguf": {
-        "name": "Qwen 2.5 7B (Great Quality)",
-        "size": "~4.4 GB",
-        "ram": "~10 GB",
-        "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
-    },
-    "Qwen2.5-14B-Instruct-Q4_K_M.gguf": {
-        "name": "Qwen 2.5 14B (Best Quality)",
-        "size": "~8.9 GB",
-        "ram": "~16 GB",
-        "repo": "bartowski/Qwen2.5-14B-Instruct-GGUF",
+    "Qwen_Qwen3.5-9B-Q4_K_M.gguf": {
+        "name": "Qwen 3.5 9B (Best Quality)",
+        "size": "~6.2 GB",
+        "ram": "~12 GB",
+        "repo": "bartowski/Qwen_Qwen3.5-9B-GGUF",
     },
 }
 MODELS_DIR = PROJECT_ROOT.parent / "models"
 # Must match what setup.bat actually downloads. A first run that defaults
 # to a model the installer never fetched leaves a new user staring at a
 # "model not downloaded" error before they have typed anything.
-DEFAULT_GGUF_MODEL = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+DEFAULT_GGUF_MODEL = "Qwen_Qwen3.5-4B-Q4_K_M.gguf"
 
 
 def _load_selected_model() -> str:
@@ -113,9 +107,11 @@ def save_selected_model(filename: str) -> None:
 CONTEXT_STATE_PATH = MODEL_STATE_PATH.parent / "context_override.json"
 
 # Bounds for the user-adjustable context window. The floor is what the
-# agent needs to hold its system prompt plus a reply; the ceiling is what
-# Qwen2.5 models are trained for. Going past 32768 degrades quality even
-# when the hardware allows it.
+# agent needs to hold its system prompt plus a reply. The ceiling was set
+# to what Qwen2.5 was trained for and has not been re-derived for the
+# Qwen3.5 catalog, so treat 32768 as a conservative cap rather than a
+# measured limit: quality degrades past a model's trained window even when
+# the hardware allows it.
 CONTEXT_MIN = 2048
 CONTEXT_MAX = 32768
 

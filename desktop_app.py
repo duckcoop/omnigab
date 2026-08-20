@@ -1517,9 +1517,11 @@ class RAGApp(tk.Tk):
     def _safe_ctx_for(vram_gb, model_name):
         """Largest context that keeps weights + KV cache inside VRAM.
 
-        KV cache is quantized to q8_0, which halves it versus fp16. For
-        Qwen2.5 the cache costs roughly 0.09 GB per 1024 tokens at 14B and
-        scales down with model size. Returns None when we cannot tell.
+        KV cache is quantized to q8_0, which halves it versus fp16. The
+        0.09 GB per 1024 tokens figure below was measured on Qwen2.5 at
+        14B and scales down with model size; it has not been re-measured
+        for the Qwen3.5 catalog, so it is an upper bound rather than a
+        fit. Returns None when we cannot tell.
         """
         if not vram_gb or not model_name:
             return None
@@ -1821,7 +1823,7 @@ class RAGApp(tk.Tk):
                 color = {"good": GREEN, "marginal": AMBER, "poor": RED}.get(tier, FG_DIM)
                 label = {"good": "tools: ready",
                          "marginal": "tools: weak (upgrade model)",
-                         "poor": "tools: broken (switch to 7B/14B)"}.get(tier, "tools: --")
+                         "poor": "tools: untested on this model"}.get(tier, "tools: --")
                 self.status_tools.configure(text=label, foreground=color)
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()

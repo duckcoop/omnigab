@@ -105,6 +105,18 @@ def save_selected_model(filename: str) -> None:
 
 
 CONTEXT_STATE_PATH = MODEL_STATE_PATH.parent / "context_override.json"
+THINKING_STATE_PATH = MODEL_STATE_PATH.parent / "thinking.json"
+
+# Reasoning models (Qwen3.5 and anything else that emits <think>) default to
+# thinking out loud on every turn. Measured on this catalog, "What is 2+2?"
+# costs 1890 tokens and 37 seconds of it. That is most of MAX_NEW_TOKENS
+# spent before the answer starts, on a question that needs none of it, and
+# it eats the 8192 window the tool loop also has to live in.
+#
+# So the default is off, and it is a setting rather than a constant because
+# the reasoning genuinely helps on hard questions and the cost is only
+# absurd on easy ones.
+THINKING_DEFAULT = False
 
 # Bounds for the user-adjustable context window. The floor is what the
 # agent needs to hold its system prompt plus a reply. The ceiling is the
@@ -121,6 +133,26 @@ CONTEXT_STATE_PATH = MODEL_STATE_PATH.parent / "context_override.json"
 # constant is only the ceiling on what a user may ask for.
 CONTEXT_MIN = 2048
 CONTEXT_MAX = 262144
+
+
+def load_thinking_enabled() -> bool:
+    """Whether the model should be allowed to emit a reasoning block."""
+    try:
+        if THINKING_STATE_PATH.exists():
+            with open(THINKING_STATE_PATH, "r", encoding="utf-8") as f:
+                value = json.load(f).get("enabled")
+            if isinstance(value, bool):
+                return value
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        pass
+    return THINKING_DEFAULT
+
+
+def save_thinking_enabled(enabled: bool) -> None:
+    """Persist the reasoning-block setting."""
+    THINKING_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(THINKING_STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump({"enabled": bool(enabled)}, f, indent=2)
 
 
 def load_context_override() -> int | None:

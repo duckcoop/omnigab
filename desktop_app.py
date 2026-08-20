@@ -1487,10 +1487,34 @@ class RAGApp(tk.Tk):
 
         tk.Label(frame,
                  text="Guide:  4096 = short chats  ·  8192 = default  ·  "
-                      "16384 = long documents  ·  32768 = maximum",
+                      "16384 = long documents  ·  262144 = model maximum",
                  fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w").pack(fill="x", padx=16, pady=(4, 0))
 
         self._load_context_setting()
+
+        # --- Reasoning block -------------------------------------------
+        # Off by default. Measured on Qwen3.5 9B, "What is 2+2?" costs 1
+        # token and 0.3s with this off, and 2048 tokens and 52s with it on,
+        # where 2048 is MAX_NEW_TOKENS: the model is still reasoning when
+        # the budget runs out and never reaches an answer. Enabling it is
+        # only sensible alongside a much larger token ceiling, which is
+        # what the warning below says.
+        tk.Label(frame, text="REASONING", fg=GREEN, bg=BG, font=FONT_SM,
+                 anchor="w").pack(fill="x", padx=16, pady=(12, 2))
+        self.thinking_var = tk.BooleanVar(value=False)
+        think_frame = tk.Frame(frame, bg=BG)
+        think_frame.pack(fill="x", padx=16)
+        tk.Checkbutton(think_frame,
+                       text="Let the model think out loud before answering",
+                       variable=self.thinking_var, command=self._save_thinking_setting,
+                       fg=FG, bg=BG, selectcolor=BG, activebackground=BG,
+                       activeforeground=GREEN, font=FONT_XS,
+                       anchor="w").pack(side="left")
+        self.thinking_status = tk.Label(frame, text="", fg=FG_DIM, bg=BG,
+                                        font=FONT_XS, anchor="w",
+                                        wraplength=620, justify="left")
+        self.thinking_status.pack(fill="x", padx=16, pady=(2, 0))
+        self._load_thinking_setting()
 
         btn_f = tk.Frame(frame, bg=BG)
         btn_f.pack(fill="x", padx=16, pady=8)
@@ -1599,6 +1623,40 @@ class RAGApp(tk.Tk):
             self.after(0, lambda: self.ctx_status.configure(text=text, fg=FG_DIM))
 
         threading.Thread(target=do, daemon=True).start()
+
+    def _load_thinking_setting(self):
+        try:
+            import config
+            enabled = config.load_thinking_enabled()
+        except Exception as exc:
+            self.thinking_status.configure(text=f"Could not load: {exc}", fg=RED)
+            return
+        self.thinking_var.set(enabled)
+        self._describe_thinking(enabled)
+
+    def _describe_thinking(self, enabled):
+        if enabled:
+            self.thinking_status.configure(
+                text=("On. Answers are slower and spend most of the token "
+                      "budget reasoning first; on short questions the model "
+                      "can run out before it answers. Raise max tokens if "
+                      "you keep this on."),
+                fg=AMBER)
+        else:
+            self.thinking_status.configure(
+                text=("Off. The model answers directly, which is what the "
+                      "context and token budgets are sized for."),
+                fg=FG_DIM)
+
+    def _save_thinking_setting(self):
+        enabled = bool(self.thinking_var.get())
+        try:
+            import config
+            config.save_thinking_enabled(enabled)
+        except Exception as exc:
+            self.thinking_status.configure(text=f"Could not save: {exc}", fg=RED)
+            return
+        self._describe_thinking(enabled)
 
     def _save_context_setting(self):
         """Validate and persist. Bad input gets a message, never a crash."""

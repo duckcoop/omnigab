@@ -30,6 +30,7 @@ from typing import AsyncIterator
 from config import (
     GENERATION_MODEL, GGUF_MODEL_PATH, MAX_NEW_TOKENS,
     TEMPERATURE, TOP_P, CONTEXT_WINDOW, N_THREADS,
+    load_thinking_enabled,
 )
 from security import (
     DOC_START,
@@ -40,6 +41,31 @@ from security import (
 
 
 _STOP_TOKENS = ["<|im_end|>", "<|im_start|>", "<|endoftext|>"]
+
+# Qwen3.5's own chat template turns reasoning off by opening the block and
+# closing it immediately, so the model finds it already finished and goes
+# straight to the answer. From the template in the GGUF:
+#
+#   {%- if enable_thinking is defined and enable_thinking is false %}
+#       {{- '<think>...</think>' }}
+#
+# This app assembles ChatML by hand rather than applying that template, so
+# it always landed in the thinking branch. Emitting the same prefill is how
+# you get the template's "off" behaviour without a Jinja dependency, and it
+# is harmless on a model that does not reason: two empty tags.
+_NO_THINK_PREFILL = "<think>\n\n</think>\n\n"
+
+
+def _assistant_turn() -> str:
+    """The assistant turn marker, with reasoning suppressed unless enabled.
+
+    Read per call rather than cached, so toggling the setting takes effect
+    on the next message instead of on the next model reload.
+    """
+    marker = "<|im_start|>assistant\n"
+    return (marker if load_thinking_enabled()
+            else marker + _NO_THINK_PREFILL)
+
 
 # llama-cpp-python is an optional dependency: it publishes an sdist only on
 # PyPI, so requiring it would make a plain install attempt a source build.
@@ -249,7 +275,7 @@ class Generator:
         return (
             "<|im_start|>system\n" + system_msg + "<|im_end|>\n"
             "<|im_start|>user\n" + user_msg + "<|im_end|>\n"
-            "<|im_start|>assistant\n"
+            + _assistant_turn()
         )
 
     def generate(self, question: str, context: str, temperature_override=None,
@@ -297,7 +323,7 @@ class Generator:
                 content = f"[tool:{tool_name}]\n{content}"
                 role = "user"
             parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
-        parts.append("<|im_start|>assistant\n")
+        parts.append(_assistant_turn())
         return "\n".join(parts)
 
     def generate_raw(self, prompt: str, temperature: float | None = None,

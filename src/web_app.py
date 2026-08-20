@@ -43,6 +43,7 @@ from security import (
     audit_log,
     check_bearer_token,
     get_or_create_api_token,
+    load_env_file,
     read_audit_log,
     sanitize_filename,
     validate_text_input,
@@ -169,6 +170,14 @@ def startup():
 
     print("Loading omnigab...")
 
+    # Before anything reads os.environ. usajobs_search checks
+    # USAJOBS_API_KEY at call time, and without this a key sitting in .env
+    # is never seen: the tool drops to browser-handoff mode and returns no
+    # listings, which looks like the model making things up.
+    applied = load_env_file()
+    if applied:
+        print(f"Loaded {len(applied)} setting(s) from .env: {', '.join(sorted(applied))}")
+
     embedder = EmbeddingEngine()
     store = VectorStore()
     try:
@@ -240,14 +249,6 @@ def serve_ui():
     html_path = Path(__file__).parent / "static" / "index.html"
     if not html_path.exists():
         return HTMLResponse("<h1>index.html not found</h1>", status_code=404)
-    return html_path.read_text(encoding="utf-8")
-
-
-@app.get("/jobs", response_class=HTMLResponse)
-def serve_jobs_ui():
-    html_path = Path(__file__).parent / "static" / "jobs.html"
-    if not html_path.exists():
-        return HTMLResponse("<h1>jobs.html not found</h1>", status_code=404)
     return html_path.read_text(encoding="utf-8")
 
 
@@ -967,79 +968,6 @@ async def api_benchmark(request: Request):
         "elapsed": round(elapsed, 2),
         "model": mm.current_model_name,
     })
-
-
-# -------------------------------------------------------- job agent
-job_agent_instance = None
-uploaded_resume_text = ""
-
-
-def get_job_agent():
-    global job_agent_instance
-    if job_agent_instance is None:
-        from job_agent import JobAgent
-        gen = mm.generator if mm else None
-        job_agent_instance = JobAgent(generator=gen)
-    return job_agent_instance
-
-
-@app.post("/api/jobs/upload-resume")
-async def api_upload_resume(request: Request):
-    global uploaded_resume_text
-    body = await request.json()
-    try:
-        text = validate_text_input(body.get("text", ""), field="Resume text", max_chars=200000)
-    except ValidationError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
-    uploaded_resume_text = text
-    ja = get_job_agent()
-    ja.set_resume_text(text)
-    return JSONResponse({"status": "ok", "length": len(text)})
-
-
-@app.post("/api/jobs/search")
-async def api_job_search(request: Request):
-    body = await request.json()
-    try:
-        job_title = validate_text_input(body.get("title", ""), field="Job title", max_chars=200)
-        location = validate_text_input(body.get("location", ""), field="Location", max_chars=200, allow_empty=True)
-    except ValidationError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
-    num_results = body.get("num_results", 10)
-    try:
-        num_results = max(1, min(25, int(num_results)))
-    except (TypeError, ValueError):
-        return JSONResponse({"error": "num_results must be an integer"}, status_code=400)
-
-    ja = get_job_agent()
-    if not ja.resume_text:
-        if uploaded_resume_text:
-            ja.set_resume_text(uploaded_resume_text)
-        else:
-            loaded = ja.load_resume()
-            if not loaded:
-                return JSONResponse({"error": "No resume uploaded"}, status_code=400)
-
-    jobs = await asyncio.to_thread(ja.search_and_score, job_title, location, num_results)
-    return JSONResponse({
-        "status": "ok",
-        "count": len(jobs),
-        "jobs": ja.to_dict_list(n=len(jobs)),
-    })
-
-
-@app.get("/api/jobs/pdf")
-def api_job_pdf():
-    ja = get_job_agent()
-    if not ja.jobs:
-        return JSONResponse({"error": "No job results yet."}, status_code=400)
-    from job_report import generate_job_report
-    output_path = Path(__file__).parent.parent / "job_results.pdf"
-    generate_job_report(ja.get_top_jobs(5), output_path=output_path)
-    pdf_bytes = output_path.read_bytes()
-    from fastapi.responses import Response
-    return Response(content=pdf_bytes, media_type="application/pdf",
-                    headers={"Content-Disposition": "attachment; filename=job_results.pdf"})
 
 
 if __name__ == "__main__":

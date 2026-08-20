@@ -232,7 +232,7 @@ class RAGApp(tk.Tk):
 
         self.tabs = {}
         self.current_tab = "chat"
-        tab_names = ["chat", "jobs", "docs", "models", "settings", "developer"]
+        tab_names = ["chat", "docs", "models", "settings", "developer"]
 
         for name in tab_names:
             style = "ActiveTab.TButton" if name == "chat" else "Tab.TButton"
@@ -256,7 +256,6 @@ class RAGApp(tk.Tk):
     def _build_panels(self):
         self.panels = {}
         self._build_chat_panel()
-        self._build_jobs_panel()
         self._build_docs_panel()
         self._build_models_panel()
         self._build_settings_panel()
@@ -813,175 +812,8 @@ class RAGApp(tk.Tk):
         self.chat_input.focus_set()
 
     # ========== JOBS PANEL ==========
-    def _build_jobs_panel(self):
-        """Cleaner card-based layout inspired by the Claude settings page.
 
-        Two cards stacked vertically inside a scrollable container:
-          1. Resume       — file picker, status, change/clear actions
-          2. Quick Search — title + location + search button + results
 
-        Each card is a Frame with BG2 background sitting on the main BG so
-        it reads as a discrete grouped section, similar to how Claude's
-        settings page groups Profile / Preferences / Notifications.
-        """
-        frame = ttk.Frame(self, style="Panel.TFrame")
-        self.panels["jobs"] = frame
-
-        canvas = tk.Canvas(frame, bg=BG, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-        outer = tk.Frame(canvas, bg=BG)
-
-        outer.bind("<Configure>",
-                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        outer_window = canvas.create_window((0, 0), window=outer, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        # Resize the inner frame to match the canvas width so cards stretch.
-        canvas.bind("<Configure>",
-                    lambda e: canvas.itemconfigure(outer_window, width=e.width))
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-
-        # ----- Page header (above cards) -----
-        header = tk.Frame(outer, bg=BG)
-        header.pack(fill="x", padx=32, pady=(24, 16))
-        tk.Label(header, text="Jobs", fg=FG_BRIGHT, bg=BG,
-                 font=("Georgia", 18, "bold"), anchor="w").pack(anchor="w")
-        tk.Label(header,
-                 text="Manage the resume the agent uses to score Indeed listings, "
-                      "or run a quick title/location search without leaving this tab.",
-                 fg=FG_DIM, bg=BG, font=FONT_SM, anchor="w",
-                 wraplength=820, justify="left").pack(anchor="w", pady=(4, 0))
-
-        # ===== CARD 1: Resume =====
-        card1 = self._jobs_card(outer)
-        card1.pack(fill="x", padx=32, pady=(0, 16))
-        self._card_title(card1, "Resume",
-                         "Drop a PDF, DOCX, TXT, or MD. The agent uses it to score "
-                         "every Indeed result against your background.")
-
-        # Single row: left = filename status, right = buttons.
-        row = tk.Frame(card1, bg=BG2)
-        row.pack(fill="x", padx=20, pady=(8, 18))
-
-        self.resume_status_label = tk.Label(
-            row, text="No resume selected.",
-            fg=FG_DIM, bg=BG2, font=FONT, anchor="w",
-        )
-        self.resume_status_label.pack(side="left", fill="x", expand=True)
-
-        # Right-aligned button group, primary green button + small Clear.
-        btn_group = tk.Frame(row, bg=BG2)
-        btn_group.pack(side="right")
-        self.resume_choose_btn = tk.Button(
-            btn_group, text="Choose file...", bg=GREEN, fg=BG,
-            activebackground=FG_BRIGHT, activeforeground=BG,
-            font=("Segoe UI", 10, "bold"), borderwidth=0,
-            padx=14, pady=6, cursor="hand2",
-            command=self._choose_resume,
-        )
-        self.resume_choose_btn.pack(side="left", padx=(0, 8))
-        self.resume_clear_btn = tk.Button(
-            btn_group, text="Clear", bg=BG2, fg=FG_DIM,
-            activebackground=BG3, activeforeground=RED,
-            font=FONT_SM, borderwidth=1, padx=10, pady=5, cursor="hand2",
-            highlightbackground=BORDER,
-            command=self._clear_resume,
-        )
-        self.resume_clear_btn.pack(side="left")
-
-        # ===== CARD 2: Quick Indeed Search =====
-        card2 = self._jobs_card(outer)
-        card2.pack(fill="x", padx=32, pady=(0, 16))
-        self._card_title(card2, "Quick Indeed Search",
-                         "Direct title/location search. For richer agent-driven "
-                         "queries with resume-match scoring, use the Chat tab.")
-
-        # Title row
-        self._labeled_entry_row(card2, "Title", "job_title", width=42, padx=20, pady=(8, 6))
-        # Location row
-        self._labeled_entry_row(card2, "Location", "job_location", width=42, padx=20, pady=(0, 6))
-
-        # Bottom action row
-        action_row = tk.Frame(card2, bg=BG2)
-        action_row.pack(fill="x", padx=20, pady=(8, 18))
-        self.job_status = tk.Label(action_row, text="", fg=FG_DIM, bg=BG2, font=FONT_XS, anchor="w")
-        self.job_status.pack(side="left", fill="x", expand=True)
-        tk.Button(action_row, text="Search", bg=GREEN, fg=BG,
-                  activebackground=FG_BRIGHT, activeforeground=BG,
-                  font=("Segoe UI", 10, "bold"), borderwidth=0,
-                  padx=18, pady=6, cursor="hand2",
-                  command=self._search_jobs).pack(side="right")
-
-        # ===== Results area =====
-        results_card = self._jobs_card(outer)
-        results_card.pack(fill="x", expand=False, padx=32, pady=(0, 24))
-        self._card_title(results_card, "Results", None)
-
-        self.job_results = tk.Text(
-            results_card, bg=BG2, fg=FG, font=FONT_SM, height=14,
-            state="disabled", borderwidth=0, highlightthickness=0,
-            wrap="word", padx=20, pady=4,
-        )
-        self.job_results.pack(fill="both", expand=True, padx=0, pady=(0, 18))
-        self.job_results.tag_configure("title", foreground=GREEN, font=("Segoe UI", 11, "bold"))
-        self.job_results.tag_configure("company", foreground=AMBER, font=FONT_SM)
-        self.job_results.tag_configure("score_high", foreground=GREEN, font=FONT_SM)
-        self.job_results.tag_configure("score_mid", foreground=AMBER, font=FONT_SM)
-        self.job_results.tag_configure("score_low", foreground=RED, font=FONT_SM)
-        self.job_results.tag_configure("dim", foreground=FG_DIM, font=FONT_XS)
-
-    # ----- card helpers used by _build_jobs_panel -----
-
-    def _jobs_card(self, parent):
-        """A grouped section: BG2 panel with a 1px border.
-
-        Single Frame so callers can pack the returned widget into the parent
-        AND pack their children into the same widget. The border is drawn
-        via highlight* options — no outer/inner trick needed.
-        """
-        return tk.Frame(
-            parent, bg=BG2,
-            highlightbackground=BORDER, highlightthickness=1,
-        )
-
-    def _card_title(self, card, title: str, subtitle: str | None):
-        head = tk.Frame(card, bg=BG2)
-        head.pack(fill="x", padx=20, pady=(18, 2))
-        tk.Label(head, text=title, fg=FG_BRIGHT, bg=BG2,
-                 font=("Segoe UI", 13, "bold"), anchor="w").pack(anchor="w")
-        if subtitle:
-            tk.Label(card, text=subtitle, fg=FG_DIM, bg=BG2, font=FONT_SM,
-                     anchor="w", justify="left", wraplength=820).pack(
-                anchor="w", padx=20, pady=(2, 0))
-
-    def _labeled_entry_row(self, card, label_text: str, attr: str,
-                            width: int = 30, padx=20, pady=(6, 6)):
-        row = tk.Frame(card, bg=BG2)
-        row.pack(fill="x", padx=padx, pady=pady)
-        tk.Label(row, text=label_text, fg=FG, bg=BG2, font=FONT,
-                 anchor="w", width=10).pack(side="left")
-        entry = tk.Entry(row, bg=BG, fg=FG_BRIGHT, font=FONT,
-                         insertbackground=GREEN, borderwidth=1,
-                         highlightthickness=1, highlightcolor=GREEN,
-                         highlightbackground=BORDER, width=width)
-        entry.pack(side="left", padx=(12, 0), ipady=5, fill="x", expand=True)
-        setattr(self, attr, entry)
-
-    def _upload_resume(self):
-        """Legacy text-paste upload (deprecated; UI no longer exposes a textbox).
-        Kept for backward compat with /api/jobs/upload-resume callers.
-        """
-        return None
-
-    def _upload_resume(self):
-        text = self.resume_text.get("1.0", "end").strip()
-        if not text:
-            return
-        r = api_post("/api/jobs/upload-resume", {"text": text})
-        if r.get("status") == "ok":
-            self.job_status.configure(text=f"Resume uploaded ({r['length']} chars)", fg=GREEN)
-        else:
-            self.job_status.configure(text=r.get("error", "Upload failed"), fg=RED)
 
     # ----- active resume file selection -----
 
@@ -1083,43 +915,6 @@ class RAGApp(tk.Tk):
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 
-    def _search_jobs(self):
-        title = self.job_title.get().strip()
-        if not title:
-            return
-        location = self.job_location.get().strip()
-        self.job_status.configure(text="Searching...", fg=AMBER)
-        threading.Thread(target=self._do_job_search, args=(title, location), daemon=True).start()
-
-    def _do_job_search(self, title, location):
-        try:
-            r = api_post("/api/jobs/search", {"title": title, "location": location, "num_results": 10})
-            if r.get("error"):
-                self.after(0, lambda: self.job_status.configure(text=r["error"], fg=RED))
-                return
-
-            jobs = r.get("jobs", [])
-            self.after(0, lambda: self.job_status.configure(text=f"Found {len(jobs)} jobs", fg=GREEN))
-
-            def show():
-                self.job_results.configure(state="normal")
-                self.job_results.delete("1.0", "end")
-                for j in jobs:
-                    score = j.get("match_score", 0)
-                    stag = "score_high" if score >= 70 else "score_mid" if score >= 40 else "score_low"
-                    self.job_results.insert("end", f"{j.get('title', 'Untitled')}\n", "title")
-                    self.job_results.insert("end", f"  {j.get('company', '?')} | {j.get('location', '')}\n", "company")
-                    self.job_results.insert("end", f"  Match: {score}/100", stag)
-                    if j.get("salary"):
-                        self.job_results.insert("end", f"  |  {j['salary']}", "dim")
-                    self.job_results.insert("end", "\n", "dim")
-                    if j.get("match_reason"):
-                        self.job_results.insert("end", f"  {j['match_reason']}\n", "dim")
-                    self.job_results.insert("end", "\n", "dim")
-                self.job_results.configure(state="disabled")
-            self.after(0, show)
-        except Exception as e:
-            self.after(0, lambda: self.job_status.configure(text=str(e), fg=RED))
 
     # ========== DOCS PANEL ==========
     def _build_docs_panel(self):
@@ -1491,6 +1286,35 @@ class RAGApp(tk.Tk):
                  fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w").pack(fill="x", padx=16, pady=(4, 0))
 
         self._load_context_setting()
+
+        # --- Resume ----------------------------------------------------
+        # Lived in the Jobs tab until that was removed. It never belonged
+        # there: the resume feeds usajobs_search's match scoring and the
+        # federal resume drafter, neither of which had anything to do with
+        # the Indeed search the tab was built around.
+        tk.Label(frame, text="RESUME", fg=GREEN, bg=BG, font=FONT_SM,
+                 anchor="w").pack(fill="x", padx=16, pady=(12, 2))
+        tk.Label(frame,
+                 text=("Used to score USAJOBS results against your background "
+                       "and to draft tailored federal resumes. PDF, DOCX, TXT "
+                       "or MD."),
+                 fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w",
+                 wraplength=620, justify="left").pack(fill="x", padx=16)
+        resume_row = tk.Frame(frame, bg=BG)
+        resume_row.pack(fill="x", padx=16, pady=(6, 0))
+        self.resume_status_label = tk.Label(
+            resume_row, text="", fg=FG_DIM, bg=BG, font=FONT_XS,
+            anchor="w", wraplength=420, justify="left")
+        self.resume_status_label.pack(side="left", fill="x", expand=True)
+        self.resume_choose_btn = tk.Button(
+            resume_row, text="CHOOSE FILE", bg=BG, fg=GREEN, font=FONT_XS,
+            command=self._choose_resume, borderwidth=1, padx=8)
+        self.resume_choose_btn.pack(side="left", padx=(8, 4))
+        self.resume_clear_btn = tk.Button(
+            resume_row, text="CLEAR", bg=BG, fg=RED, font=FONT_XS,
+            command=self._clear_resume, borderwidth=1, padx=8)
+        self.resume_clear_btn.pack(side="left")
+        self._refresh_resume_status()
 
         # --- Reasoning block -------------------------------------------
         # Off by default. Measured on Qwen3.5 9B, "What is 2+2?" costs 1

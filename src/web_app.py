@@ -43,6 +43,7 @@ from security import (
     audit_log,
     check_bearer_token,
     get_or_create_api_token,
+    load_env_file,
     read_audit_log,
     sanitize_filename,
     validate_text_input,
@@ -169,6 +170,14 @@ def startup():
 
     print("Loading omnigab...")
 
+    # Before anything reads os.environ. usajobs_search checks
+    # USAJOBS_API_KEY at call time, and without this a key sitting in .env
+    # is never seen: the tool drops to browser-handoff mode and returns no
+    # listings, which looks like the model making things up.
+    applied = load_env_file()
+    if applied:
+        print(f"Loaded {len(applied)} setting(s) from .env: {', '.join(sorted(applied))}")
+
     embedder = EmbeddingEngine()
     store = VectorStore()
     try:
@@ -240,14 +249,6 @@ def serve_ui():
     html_path = Path(__file__).parent / "static" / "index.html"
     if not html_path.exists():
         return HTMLResponse("<h1>index.html not found</h1>", status_code=404)
-    return html_path.read_text(encoding="utf-8")
-
-
-@app.get("/jobs", response_class=HTMLResponse)
-def serve_jobs_ui():
-    html_path = Path(__file__).parent / "static" / "jobs.html"
-    if not html_path.exists():
-        return HTMLResponse("<h1>jobs.html not found</h1>", status_code=404)
     return html_path.read_text(encoding="utf-8")
 
 
@@ -340,21 +341,37 @@ async def api_ingest():
 
 
 def _tool_calling_capability(model_filename: str) -> dict:
-    """Heuristic: which Qwen sizes can reliably emit our <tool_call> syntax.
+    """Which catalog models can reliably emit our <tool_call> syntax.
 
     Returns a dict with `tier` ('good' | 'marginal' | 'poor') and a short
     human-readable note for the UI to surface in the topbar.
+
+    Keyed off the catalog rather than by substring-matching the filename
+    for "7b" and "14b", which is what this did while the catalog was
+    Qwen2.5. That version silently reported "poor" for anything it did not
+    recognise, so every Qwen3.5 filename would have told the user their
+    tools were broken and pointed them at models no longer on offer. A
+    lookup fails loudly and obviously instead.
     """
-    name = (model_filename or "").lower()
-    if "14b" in name:
-        return {"tier": "good", "note": "tool calling: reliable"}
-    if "7b" in name:
-        return {"tier": "good", "note": "tool calling: reliable"}
-    if "3b" in name:
-        return {"tier": "marginal",
-                "note": "tool calling: hit-and-miss — upgrade to 7B+ for jobs/search"}
-    return {"tier": "poor",
-            "note": "tool calling: unreliable on this model — switch to 7B or 14B"}
+    # Both are "good" on measurement rather than on size. Each was run
+    # through the real agent loop twice: 4/4 on simple python_eval calls
+    # with no spurious call on a control prompt, and 5/6 on the tools with
+    # large schemas (usajobs_search, cve_lookup's action enum), picking the
+    # right tool and inventing no argument names. They scored identically,
+    # so labelling the 4B weaker would be a guess contradicted by the data.
+    #
+    # The shared 6th failure is the resume drafter, which neither model
+    # routes to. That is a tool-description problem rather than a model
+    # one, and it is written up in docs/TODOS.md.
+    tiers = {
+        "Qwen_Qwen3.5-9B-Q4_K_M.gguf": {
+            "tier": "good", "note": "tool calling: reliable"},
+        "Qwen_Qwen3.5-4B-Q4_K_M.gguf": {
+            "tier": "good", "note": "tool calling: reliable"},
+    }
+    return tiers.get(model_filename or "", {
+        "tier": "poor",
+        "note": "tool calling: untested on this model, results may vary"})
 
 
 @app.get("/api/status")
@@ -545,9 +562,15 @@ async def api_model_switch(request: Request):
     filename = (body.get("filename") or "").strip()
     if mm is None:
         return JSONResponse({"error": "ModelManager not ready"}, status_code=503)
+    from generator import InferenceUnavailable  # local: no llama_cpp at import
     try:
         status = await asyncio.to_thread(mm.load, filename)
     except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except InferenceUnavailable as exc:
+        # Same treatment as a model that is not downloaded: the environment
+        # is incomplete and the message says how to complete it, which is
+        # not a server fault and reads badly as a 500.
         return JSONResponse({"error": str(exc)}, status_code=400)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
@@ -945,79 +968,6 @@ async def api_benchmark(request: Request):
         "elapsed": round(elapsed, 2),
         "model": mm.current_model_name,
     })
-
-
-# -------------------------------------------------------- job agent
-job_agent_instance = None
-uploaded_resume_text = ""
-
-
-def get_job_agent():
-    global job_agent_instance
-    if job_agent_instance is None:
-        from job_agent import JobAgent
-        gen = mm.generator if mm else None
-        job_agent_instance = JobAgent(generator=gen)
-    return job_agent_instance
-
-
-@app.post("/api/jobs/upload-resume")
-async def api_upload_resume(request: Request):
-    global uploaded_resume_text
-    body = await request.json()
-    try:
-        text = validate_text_input(body.get("text", ""), field="Resume text", max_chars=200000)
-    except ValidationError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
-    uploaded_resume_text = text
-    ja = get_job_agent()
-    ja.set_resume_text(text)
-    return JSONResponse({"status": "ok", "length": len(text)})
-
-
-@app.post("/api/jobs/search")
-async def api_job_search(request: Request):
-    body = await request.json()
-    try:
-        job_title = validate_text_input(body.get("title", ""), field="Job title", max_chars=200)
-        location = validate_text_input(body.get("location", ""), field="Location", max_chars=200, allow_empty=True)
-    except ValidationError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
-    num_results = body.get("num_results", 10)
-    try:
-        num_results = max(1, min(25, int(num_results)))
-    except (TypeError, ValueError):
-        return JSONResponse({"error": "num_results must be an integer"}, status_code=400)
-
-    ja = get_job_agent()
-    if not ja.resume_text:
-        if uploaded_resume_text:
-            ja.set_resume_text(uploaded_resume_text)
-        else:
-            loaded = ja.load_resume()
-            if not loaded:
-                return JSONResponse({"error": "No resume uploaded"}, status_code=400)
-
-    jobs = await asyncio.to_thread(ja.search_and_score, job_title, location, num_results)
-    return JSONResponse({
-        "status": "ok",
-        "count": len(jobs),
-        "jobs": ja.to_dict_list(n=len(jobs)),
-    })
-
-
-@app.get("/api/jobs/pdf")
-def api_job_pdf():
-    ja = get_job_agent()
-    if not ja.jobs:
-        return JSONResponse({"error": "No job results yet."}, status_code=400)
-    from job_report import generate_job_report
-    output_path = Path(__file__).parent.parent / "job_results.pdf"
-    generate_job_report(ja.get_top_jobs(5), output_path=output_path)
-    pdf_bytes = output_path.read_bytes()
-    from fastapi.responses import Response
-    return Response(content=pdf_bytes, media_type="application/pdf",
-                    headers={"Content-Disposition": "attachment; filename=job_results.pdf"})
 
 
 if __name__ == "__main__":

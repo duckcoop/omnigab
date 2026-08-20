@@ -32,41 +32,35 @@ SIMILARITY_THRESHOLD = 0.3
 
 # -- Generation Model (GGUF via llama-cpp) --
 # Available models (download into models/ folder):
+# Both entries are bartowski requants of the official Qwen weights. Unlike
+# Qwen2.5, the Qwen team publishes no first-party GGUFs for 3.5, so there
+# is no official repo to prefer. Bartowski was already the source for the
+# old 7B and 14B entries, ships single-file quants rather than gguf-split
+# (which hf_hub_download cannot fetch by plain filename), and mirrors the
+# upstream Apache-2.0 license.
+#
+# The doubled name in the filenames is bartowski's <org>_<model> convention,
+# not a typo. It has to match the file on the Hub exactly, because
+# ensure_model_downloaded() passes it straight to hf_hub_download.
 AVAILABLE_MODELS = {
-    "qwen2.5-1.5b-instruct-q4_k_m.gguf": {
-        "name": "Qwen 2.5 1.5B (Default)",
-        "size": "~1.1 GB",
-        "ram": "~4 GB",
-        "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-    },
-    "qwen2.5-3b-instruct-q4_k_m.gguf": {
-        "name": "Qwen 2.5 3B (Recommended)",
-        "size": "~2.1 GB",
+    "Qwen_Qwen3.5-4B-Q4_K_M.gguf": {
+        "name": "Qwen 3.5 4B (Default)",
+        "size": "~3.0 GB",
         "ram": "~6 GB",
-        "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+        "repo": "bartowski/Qwen_Qwen3.5-4B-GGUF",
     },
-    # 7B uses bartowski's single-file quant. The official Qwen repo
-    # shards the 7B Q4_K_M into two pieces (gguf-split format), which
-    # hf_hub_download can't fetch with a plain filename. Bartowski's
-    # repo is the same source we already use for the 14B.
-    "Qwen2.5-7B-Instruct-Q4_K_M.gguf": {
-        "name": "Qwen 2.5 7B (Great Quality)",
-        "size": "~4.4 GB",
-        "ram": "~10 GB",
-        "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
-    },
-    "Qwen2.5-14B-Instruct-Q4_K_M.gguf": {
-        "name": "Qwen 2.5 14B (Best Quality)",
-        "size": "~8.9 GB",
-        "ram": "~16 GB",
-        "repo": "bartowski/Qwen2.5-14B-Instruct-GGUF",
+    "Qwen_Qwen3.5-9B-Q4_K_M.gguf": {
+        "name": "Qwen 3.5 9B (Best Quality)",
+        "size": "~6.2 GB",
+        "ram": "~12 GB",
+        "repo": "bartowski/Qwen_Qwen3.5-9B-GGUF",
     },
 }
 MODELS_DIR = PROJECT_ROOT.parent / "models"
 # Must match what setup.bat actually downloads. A first run that defaults
 # to a model the installer never fetched leaves a new user staring at a
 # "model not downloaded" error before they have typed anything.
-DEFAULT_GGUF_MODEL = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+DEFAULT_GGUF_MODEL = "Qwen_Qwen3.5-4B-Q4_K_M.gguf"
 
 
 def _load_selected_model() -> str:
@@ -111,13 +105,54 @@ def save_selected_model(filename: str) -> None:
 
 
 CONTEXT_STATE_PATH = MODEL_STATE_PATH.parent / "context_override.json"
+THINKING_STATE_PATH = MODEL_STATE_PATH.parent / "thinking.json"
+
+# Reasoning models (Qwen3.5 and anything else that emits <think>) default to
+# thinking out loud on every turn. Measured on this catalog, "What is 2+2?"
+# costs 1890 tokens and 37 seconds of it. That is most of MAX_NEW_TOKENS
+# spent before the answer starts, on a question that needs none of it, and
+# it eats the 8192 window the tool loop also has to live in.
+#
+# So the default is off, and it is a setting rather than a constant because
+# the reasoning genuinely helps on hard questions and the cost is only
+# absurd on easy ones.
+THINKING_DEFAULT = False
 
 # Bounds for the user-adjustable context window. The floor is what the
-# agent needs to hold its system prompt plus a reply; the ceiling is what
-# Qwen2.5 models are trained for. Going past 32768 degrades quality even
-# when the hardware allows it.
+# agent needs to hold its system prompt plus a reply. The ceiling is the
+# window the model was actually trained for, read out of the GGUF metadata
+# rather than assumed: both Qwen3.5 quants report
+# qwen35.context_length = 262144. Quality degrades past a model's trained
+# window even when the hardware allows it, so that is the right ceiling.
+#
+# It was 32768, which was Qwen2.5's trained window and is an 8x
+# underestimate here. The memory is not the constraint it looks like:
+# measured KV cache on this catalog is about 16 MB per 1024 tokens, so the
+# full 262144 costs roughly 4.1 GB and the 9B fits weights plus that inside
+# 12 GB. Smaller cards cannot, which is what optimal_context() is for; this
+# constant is only the ceiling on what a user may ask for.
 CONTEXT_MIN = 2048
-CONTEXT_MAX = 32768
+CONTEXT_MAX = 262144
+
+
+def load_thinking_enabled() -> bool:
+    """Whether the model should be allowed to emit a reasoning block."""
+    try:
+        if THINKING_STATE_PATH.exists():
+            with open(THINKING_STATE_PATH, "r", encoding="utf-8") as f:
+                value = json.load(f).get("enabled")
+            if isinstance(value, bool):
+                return value
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        pass
+    return THINKING_DEFAULT
+
+
+def save_thinking_enabled(enabled: bool) -> None:
+    """Persist the reasoning-block setting."""
+    THINKING_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(THINKING_STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump({"enabled": bool(enabled)}, f, indent=2)
 
 
 def load_context_override() -> int | None:

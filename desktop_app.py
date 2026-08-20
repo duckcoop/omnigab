@@ -15,7 +15,7 @@ import time
 import threading
 import socket
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, messagebox
 import urllib.request
 import urllib.error
 
@@ -47,12 +47,31 @@ BORDER = "#324035"         # slightly green-tinted border (was #3a3833)
 USER_BUBBLE_BG = "#1c3a2e"
 USER_BUBBLE_BG_DARK = "#162d24"
 USER_BUBBLE_FG = "#e6f0e2"
-FONT = ("Segoe UI", 11)
-FONT_SM = ("Segoe UI", 10)
-FONT_XS = ("Segoe UI", 9)
-FONT_LG = ("Segoe UI", 13)
-FONT_TITLE = ("Georgia", 15, "bold")
-FONT_ASCII = ("Georgia", 28)
+# Two families, on purpose. Chrome (labels, prefixes, status, headings) is
+# monospace, which is where the terminal identity lives. Body prose stays
+# proportional, because a long answer set in monospace is genuinely harder
+# to read and the aesthetic is not worth costing the user that.
+#
+# Georgia used to supply FONT_TITLE and the empty-state heading. A serif
+# belongs to neither half and read as an accident rather than a choice.
+MONO = "Consolas"
+SANS = "Segoe UI"
+
+FONT = (SANS, 11)
+FONT_SM = (SANS, 10)
+FONT_XS = (SANS, 9)
+FONT_LG = (SANS, 13)
+FONT_TITLE = (MONO, 14, "bold")
+FONT_ASCII = (MONO, 22)
+FONT_MONO_SM = (MONO, 10)
+FONT_MONO_XS = (MONO, 9)
+
+# The transcript is capped at a readable measure instead of stretching to
+# the window. On a 2560px monitor a full-width line is roughly 300
+# characters, which is unreadable; 820px lands near the 70-90 characters
+# that prose is comfortable at.
+CONTENT_MAX_W = 820
+COMPOSER_MAX_W = 820
 
 
 def api_get(path):
@@ -144,6 +163,32 @@ class RAGApp(tk.Tk):
         # Style
         self.style = ttk.Style()
         self.style.theme_use("clam")
+
+        # Thin, dark, no arrow buttons. The classic tk.Scrollbar that
+        # ScrolledText creates ignores colour options on Windows and renders
+        # as a light native widget against the dark panel; a ttk scrollbar
+        # under clam does not.
+        self.style.element_create("Chat.Vertical.Scrollbar.trough", "from", "clam")
+        self.style.element_create("Chat.Vertical.Scrollbar.thumb", "from", "clam")
+        self.style.layout("Chat.Vertical.TScrollbar", [
+            ("Chat.Vertical.Scrollbar.trough", {
+                "sticky": "ns",
+                "children": [
+                    ("Chat.Vertical.Scrollbar.thumb",
+                     {"expand": "1", "sticky": "nswe"}),
+                ],
+            }),
+        ])
+        self.style.configure(
+            "Chat.Vertical.TScrollbar",
+            background=BG3, troughcolor=BG, bordercolor=BG,
+            lightcolor=BG3, darkcolor=BG3, arrowcolor=FG_DIM,
+            borderwidth=0, relief="flat", width=10,
+        )
+        self.style.map(
+            "Chat.Vertical.TScrollbar",
+            background=[("active", GREEN_DIM), ("pressed", GREEN_DIM)],
+        )
         self._configure_styles()
 
         # Build UI
@@ -196,50 +241,77 @@ class RAGApp(tk.Tk):
                foreground=[("active", BG)])
 
     def _build_topbar(self):
-        bar = ttk.Frame(self, style="Topbar.TFrame", height=36)
+        """Identity on the left, live status on the right.
+
+        The status items used to be packed with 8px between them and no
+        separators, so five of them ran together into one dense string in
+        the corner. They are the same labels, given room and a divider.
+        """
+        bar = ttk.Frame(self, style="Topbar.TFrame", height=44)
         bar.pack(fill="x", side="top")
         bar.pack_propagate(False)
 
-        ttk.Label(bar, text="omnigab", style="Logo.TLabel").pack(side="left", padx=(12, 4))
+        ttk.Label(bar, text="omnigab", style="Logo.TLabel").pack(
+            side="left", padx=(20, 10))
 
-        sep = ttk.Label(bar, text=" | ", style="Topbar.TLabel")
-        sep.pack(side="left", padx=4)
-
-        self.model_label = ttk.Label(bar, text="loading...", style="Topbar.TLabel")
+        self.model_label = ttk.Label(bar, text="loading...",
+                                     style="Topbar.TLabel")
         self.model_label.pack(side="left")
 
-        # Right side status
-        self.status_session = ttk.Label(bar, text="session: active", style="Topbar.TLabel")
-        self.status_session.pack(side="right", padx=(8, 12))
+        # Right side, packed right-to-left, so declare in reverse order.
+        self.status_session = ttk.Label(bar, text="session: active",
+                                        style="Topbar.TLabel")
+        self.status_session.pack(side="right", padx=(0, 20))
         self.status_web = ttk.Label(bar, text="web: --", style="Topbar.TLabel")
-        self.status_web.pack(side="right", padx=8)
-        self.status_index = ttk.Label(bar, text="index: --", style="Topbar.TLabel")
-        self.status_index.pack(side="right", padx=8)
-        self.status_resume = ttk.Label(bar, text="resume: none", style="Topbar.TLabel")
-        self.status_resume.pack(side="right", padx=8)
-        # Tool-calling capability badge. Red on 1.5B (can't tool-call),
-        # amber on 3B (marginal), green on 7B/14B.
-        self.status_tools = ttk.Label(bar, text="tools: --", style="Topbar.TLabel")
-        self.status_tools.pack(side="right", padx=8)
+        self.status_web.pack(side="right", padx=14)
+        self.status_index = ttk.Label(bar, text="index: --",
+                                      style="Topbar.TLabel")
+        self.status_index.pack(side="right", padx=14)
+        self.status_resume = ttk.Label(bar, text="resume: none",
+                                       style="Topbar.TLabel")
+        self.status_resume.pack(side="right", padx=14)
+        # Tool-calling capability badge, set from the measured tier in
+        # web_app._tool_calling_capability rather than from model size.
+        self.status_tools = ttk.Label(bar, text="tools: --",
+                                      style="Topbar.TLabel")
+        self.status_tools.pack(side="right", padx=(14, 14))
+        tk.Frame(bar, bg=BORDER, width=1).pack(
+            side="right", fill="y", pady=12)
 
     def _build_tabs(self):
+        """Tab strip with an underline on the active tab.
+
+        Colour alone carried the active state before, which is a weak
+        signal on a palette that is already mostly green, and invisible to
+        anyone who cannot separate the two greens.
+        """
         self.tabbar = ttk.Frame(self, style="TabBar.TFrame")
         self.tabbar.pack(fill="x", side="top")
 
-        # Separator line
         sep = tk.Frame(self, bg=BORDER, height=1)
         sep.pack(fill="x", side="top")
 
         self.tabs = {}
+        self.tab_indicators = {}
         self.current_tab = "chat"
-        tab_names = ["chat", "jobs", "docs", "models", "settings", "developer"]
+        tab_names = ["chat", "docs", "models", "settings", "developer"]
+
+        holder = tk.Frame(self.tabbar, bg=BG2)
+        holder.pack(side="left", padx=(14, 0))
 
         for name in tab_names:
+            cell = tk.Frame(holder, bg=BG2)
+            cell.pack(side="left")
             style = "ActiveTab.TButton" if name == "chat" else "Tab.TButton"
-            btn = ttk.Button(self.tabbar, text=name.title(), style=style,
+            btn = ttk.Button(cell, text=name.title(), style=style,
                              command=lambda n=name: self._switch_tab(n))
-            btn.pack(side="left", padx=0)
+            btn.pack(side="top")
+            # 2px rule under the active tab. Packed always, coloured to
+            # match the bar when inactive, so the strip never reflows.
+            bar = tk.Frame(cell, bg=GREEN if name == "chat" else BG2, height=2)
+            bar.pack(side="top", fill="x")
             self.tabs[name] = btn
+            self.tab_indicators[name] = bar
 
     def _switch_tab(self, name):
         self.current_tab = name
@@ -250,13 +322,14 @@ class RAGApp(tk.Tk):
                 frame.pack(fill="both", expand=True)
             else:
                 frame.pack_forget()
+        for tab_name, indicator in getattr(self, "tab_indicators", {}).items():
+            indicator.configure(bg=GREEN if tab_name == name else BG2)
         if name == "chat":
             self.chat_input.focus_set()
 
     def _build_panels(self):
         self.panels = {}
         self._build_chat_panel()
-        self._build_jobs_panel()
         self._build_docs_panel()
         self._build_models_panel()
         self._build_settings_panel()
@@ -269,103 +342,175 @@ class RAGApp(tk.Tk):
 
     # ========== CHAT PANEL ==========
     def _build_chat_panel(self):
+        """Transcript and composer, both inside one centered reading column.
+
+        The old layout let both run the full width of the window and pinned
+        the composer to the bottom edge, so on a wide monitor you got a
+        300-character measure above a 1900px input strip. Everything here
+        sits in a column capped at CONTENT_MAX_W and kept centered by
+        _center_chat_column on resize.
+        """
         frame = ttk.Frame(self, style="Panel.TFrame")
         frame.pack(fill="both", expand=True)
         self.panels["chat"] = frame
 
-        # Chat output
-        self.chat_output = scrolledtext.ScrolledText(
-            frame, wrap="word", bg=BG, fg=FG, font=FONT,
+        column = tk.Frame(frame, bg=BG)
+        column.pack(fill="both", expand=True)
+        self._chat_column = column
+        frame.bind("<Configure>", self._center_chat_column)
+
+        # Text plus an explicit ttk scrollbar, rather than ScrolledText.
+        # ScrolledText builds a classic tk.Scrollbar, which on Windows
+        # accepts colour options and then ignores them, drawing itself with
+        # the native theme: a light grey bar down the side of a dark panel.
+        transcript = tk.Frame(column, bg=BG)
+        transcript.pack(fill="both", expand=True)
+
+        self.chat_output = tk.Text(
+            transcript, wrap="word", bg=BG, fg=FG, font=FONT,
             insertbackground=GREEN, selectbackground=BORDER,
-            borderwidth=0, highlightthickness=0, padx=16, pady=12,
-            cursor="arrow", state="disabled"
+            borderwidth=0, highlightthickness=0, padx=4, pady=24,
+            cursor="arrow", state="disabled",
         )
-        self.chat_output.pack(fill="both", expand=True)
+        self.chat_scroll = ttk.Scrollbar(
+            transcript, orient="vertical", style="Chat.Vertical.TScrollbar",
+            command=self.chat_output.yview,
+        )
+        self.chat_output.configure(yscrollcommand=self.chat_scroll.set)
+        self.chat_scroll.pack(side="right", fill="y")
+        self.chat_output.pack(side="left", fill="both", expand=True)
 
-        # Configure text tags
-        self.chat_output.tag_configure(
-            "user_prefix",
-            foreground=USER_BUBBLE_FG, background=USER_BUBBLE_BG_DARK,
-            font=("Consolas", 10, "bold"),
-            lmargin1=10, lmargin2=10, rmargin=10, spacing1=6,
-        )
-        self.chat_output.tag_configure("bot_prefix", foreground=GREEN, font=("Consolas", 10, "bold"))
-        self.chat_output.tag_configure(
-            "user_text",
-            foreground=USER_BUBBLE_FG, background=USER_BUBBLE_BG, font=FONT,
-            lmargin1=10, lmargin2=10, rmargin=10, spacing3=6,
-        )
-        self.chat_output.tag_configure("bot_text", foreground=FG, font=FONT)
-        self.chat_output.tag_configure("meta", foreground=FG_DIM, font=FONT_XS)
-        self.chat_output.tag_configure("meta_good", foreground=GREEN, font=FONT_XS)
-        self.chat_output.tag_configure("meta_warn", foreground=AMBER, font=FONT_XS)
-        self.chat_output.tag_configure("meta_bad", foreground=RED, font=FONT_XS)
-        self.chat_output.tag_configure("error", foreground=RED, font=FONT)
-        self.chat_output.tag_configure("welcome", foreground=FG_BRIGHT, font=FONT_ASCII, justify="center")
-        self.chat_output.tag_configure("welcome_sub", foreground=FG_DIM, font=FONT_SM, justify="center")
-        self.chat_output.tag_configure("source", foreground=AMBER, font=FONT_XS)
-        self.chat_output.tag_configure("tool_call", foreground=CYAN, font=("Consolas", 10, "italic"))
-        # `<thinking>` blocks: dim italic so the reasoning is visible but
-        # clearly separated from the final answer.
-        self.chat_output.tag_configure(
-            "thinking", foreground=FG_DIM, font=("Segoe UI", 10, "italic"),
-            lmargin1=12, lmargin2=12, rmargin=12, spacing1=4, spacing3=4,
-        )
-        self.chat_output.tag_configure("tool_result", foreground=AMBER, font=FONT_XS)
-        self.chat_output.tag_configure("bold", foreground=FG_BRIGHT, font=("Segoe UI", 11, "bold"))
-        self.chat_output.tag_configure("link", foreground=BLUE, font=("Segoe UI", 11, "underline"))
-        self.chat_output.tag_configure("salary", foreground=GREEN, font=("Segoe UI", 10))
-        self.chat_output.tag_bind("link", "<Button-1>", self._on_link_click)
-        self.chat_output.tag_bind("link", "<Enter>",
-                                  lambda e: self.chat_output.configure(cursor="hand2"))
-        self.chat_output.tag_bind("link", "<Leave>",
-                                  lambda e: self.chat_output.configure(cursor="arrow"))
-        # Map text indices -> URLs for click handling.
-        self._link_targets: dict[str, str] = {}
+        self._configure_chat_tags()
+        self._link_targets = {}
+        self._show_empty_state()
 
-        # Welcome message
+        # --- composer ---------------------------------------------------
+        # Sits inside the column with room beneath it rather than welded to
+        # the window edge, and reads as one bordered field that happens to
+        # contain the attach and send controls.
+        composer_wrap = tk.Frame(column, bg=BG)
+        composer_wrap.pack(fill="x", pady=(0, 20))
+
+        composer = tk.Frame(composer_wrap, bg=BG2,
+                            highlightbackground=BORDER, highlightthickness=1)
+        composer.pack(fill="x")
+
+        self.attach_btn = tk.Button(
+            composer, text="+", fg=FG_DIM, bg=BG2,
+            activebackground=BG2, activeforeground=GREEN,
+            font=(MONO, 16), borderwidth=0, highlightthickness=0,
+            cursor="hand2", padx=10, pady=0,
+            command=self._attach_file,
+        )
+        self.attach_btn.pack(side="left")
+
+        # Borderless on purpose: the surrounding frame is the visible field,
+        # so an entry with its own border would draw a box inside a box.
+        self.chat_input = tk.Entry(
+            composer, bg=BG2, fg=FG_BRIGHT, font=FONT,
+            insertbackground=GREEN, selectbackground=GREEN_DIM,
+            borderwidth=0, highlightthickness=0,
+        )
+        self.chat_input.pack(side="left", fill="x", expand=True,
+                             ipady=10, padx=(2, 8))
+        self.chat_input.bind("<Return>", lambda e: self._send_query())
+        self.chat_input.bind(
+            "<FocusIn>",
+            lambda e: composer.configure(highlightbackground=GREEN_DIM))
+        self.chat_input.bind(
+            "<FocusOut>",
+            lambda e: composer.configure(highlightbackground=BORDER))
+
+        self.send_btn = tk.Button(
+            composer, text="SEND", bg=BG2, fg=GREEN,
+            font=(MONO, 9, "bold"), borderwidth=0, highlightthickness=0,
+            activebackground=BG2, activeforeground=FG_BRIGHT,
+            cursor="hand2", padx=14, pady=6,
+            command=self._send_query,
+        )
+        self.send_btn.pack(side="right", padx=(0, 6))
+
+        tk.Label(composer_wrap,
+                 text="Enter to send   +  to attach a file",
+                 fg=FG_DIM, bg=BG, font=FONT_MONO_XS, anchor="w").pack(
+            anchor="w", pady=(6, 0))
+
+    def _center_chat_column(self, event=None):
+        """Keep the reading column centered and capped as the window resizes."""
+        width = self.panels["chat"].winfo_width()
+        pad = max(24, (width - CONTENT_MAX_W) // 2)
+        self._chat_column.pack_configure(padx=pad)
+
+    def _configure_chat_tags(self):
+        """Text tags for the transcript. Chrome is mono, prose is not."""
+        out = self.chat_output
+        out.tag_configure("user_prefix", foreground=GREEN,
+                          font=(MONO, 9, "bold"), spacing1=16)
+        out.tag_configure("bot_prefix", foreground=FG_DIM,
+                          font=(MONO, 9, "bold"), spacing1=16)
+        # The user's turn is indented and tinted rather than boxed. A filled
+        # bubble at this width drew a hard rectangle across the whole column
+        # and fought the transcript for attention.
+        out.tag_configure("user_text", foreground=USER_BUBBLE_FG, font=FONT,
+                          lmargin1=14, lmargin2=14, rmargin=8, spacing3=4)
+        out.tag_configure("bot_text", foreground=FG, font=FONT,
+                          lmargin1=14, lmargin2=14, rmargin=8, spacing3=4)
+        out.tag_configure("meta", foreground=FG_DIM, font=FONT_MONO_XS,
+                          lmargin1=14, lmargin2=14)
+        out.tag_configure("meta_good", foreground=GREEN, font=FONT_MONO_XS)
+        out.tag_configure("meta_warn", foreground=AMBER, font=FONT_MONO_XS)
+        out.tag_configure("meta_bad", foreground=RED, font=FONT_MONO_XS)
+        out.tag_configure("error", foreground=RED, font=FONT,
+                          lmargin1=14, lmargin2=14)
+        out.tag_configure("welcome", foreground=FG_BRIGHT, font=FONT_ASCII,
+                          justify="center", spacing1=8, spacing3=10)
+        out.tag_configure("welcome_sub", foreground=FG_DIM, font=FONT_SM,
+                          justify="center")
+        out.tag_configure("source", foreground=AMBER, font=FONT_MONO_XS,
+                          lmargin1=14, lmargin2=14)
+        out.tag_configure("tool_call", foreground=CYAN, font=(MONO, 9),
+                          lmargin1=14, lmargin2=14)
+        # Reasoning blocks: dim, indented further than the answer so they
+        # read as working rather than as the answer itself.
+        out.tag_configure("thinking", foreground=FG_DIM,
+                          font=(SANS, 10, "italic"),
+                          lmargin1=24, lmargin2=24, rmargin=16,
+                          spacing1=4, spacing3=4)
+        out.tag_configure("tool_result", foreground=AMBER,
+                          font=FONT_MONO_XS, lmargin1=14, lmargin2=14)
+        out.tag_configure("bold", foreground=FG_BRIGHT,
+                          font=(SANS, 11, "bold"))
+        out.tag_configure("link", foreground=BLUE,
+                          font=(SANS, 11, "underline"))
+        out.tag_configure("salary", foreground=GREEN, font=(SANS, 10))
+        out.tag_bind("link", "<Button-1>", self._on_link_click)
+        out.tag_bind("link", "<Enter>", lambda e: out.configure(cursor="hand2"))
+        out.tag_bind("link", "<Leave>", lambda e: out.configure(cursor="arrow"))
+
+    def _show_empty_state(self):
+        """Greeting shown before the first turn.
+
+        The greeting used to be the literal string "Good evening" whatever
+        the clock said, which is the sort of detail that quietly tells a
+        user the software is not paying attention.
+        """
+        hour = time.localtime().tm_hour
+        if hour < 12:
+            greeting = "Good morning"
+        elif hour < 18:
+            greeting = "Good afternoon"
+        else:
+            greeting = "Good evening"
+
         self.chat_output.configure(state="normal")
-        self.chat_output.insert("end", "\n\nGood evening\n", "welcome")
+        self.chat_output.insert("end", "\n" + greeting + "\n", "welcome")
         self.chat_output.insert(
             "end",
-            "\nAsk about your documents, use skills, or start with a normal conversation.\n\n",
+            "Ask about your documents, use a skill, or just talk.\n",
             "welcome_sub",
         )
         self.chat_output.configure(state="disabled")
 
-        # Input area
-        input_frame = tk.Frame(frame, bg=BG2, padx=12, pady=10)
-        input_frame.pack(fill="x", side="bottom")
-
-        # "+" attach button: opens a file picker, uploads the file to
-        # data/docs/ via /api/docs/upload, then inserts a "[Attached: name]"
-        # hint into the chat input so the agent knows to look it up.
-        self.attach_btn = tk.Button(
-            input_frame, text="+", fg=GREEN, bg=BG2,
-            activebackground=BG3, activeforeground=FG_BRIGHT,
-            font=("Segoe UI", 18, "bold"), borderwidth=0,
-            cursor="hand2", padx=8, pady=0,
-            command=self._attach_file,
-        )
-        self.attach_btn.pack(side="left", padx=(0, 8))
-
-        self.chat_input = tk.Entry(
-            input_frame, bg=BG, fg=FG_BRIGHT, font=FONT,
-            insertbackground=GREEN, selectbackground=BORDER,
-            borderwidth=1, highlightthickness=1,
-            highlightcolor=GREEN, highlightbackground=BORDER,
-        )
-        self.chat_input.pack(side="left", fill="x", expand=True, ipady=6)
-        self.chat_input.bind("<Return>", lambda e: self._send_query())
-
-        self.send_btn = tk.Button(
-            input_frame, text="Send", bg=BG3, fg=FG_BRIGHT,
-            font=("Segoe UI", 10, "bold"), borderwidth=1,
-            highlightbackground=GREEN, activebackground=GREEN,
-            activeforeground=BG, cursor="hand2", padx=12,
-            command=self._send_query
-        )
-        self.send_btn.pack(side="right", padx=(8, 0))
 
     def _append_chat(self, text, tag="bot_text"):
         self.chat_output.configure(state="normal")
@@ -813,175 +958,8 @@ class RAGApp(tk.Tk):
         self.chat_input.focus_set()
 
     # ========== JOBS PANEL ==========
-    def _build_jobs_panel(self):
-        """Cleaner card-based layout inspired by the Claude settings page.
 
-        Two cards stacked vertically inside a scrollable container:
-          1. Resume       — file picker, status, change/clear actions
-          2. Quick Search — title + location + search button + results
 
-        Each card is a Frame with BG2 background sitting on the main BG so
-        it reads as a discrete grouped section, similar to how Claude's
-        settings page groups Profile / Preferences / Notifications.
-        """
-        frame = ttk.Frame(self, style="Panel.TFrame")
-        self.panels["jobs"] = frame
-
-        canvas = tk.Canvas(frame, bg=BG, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-        outer = tk.Frame(canvas, bg=BG)
-
-        outer.bind("<Configure>",
-                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        outer_window = canvas.create_window((0, 0), window=outer, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        # Resize the inner frame to match the canvas width so cards stretch.
-        canvas.bind("<Configure>",
-                    lambda e: canvas.itemconfigure(outer_window, width=e.width))
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-
-        # ----- Page header (above cards) -----
-        header = tk.Frame(outer, bg=BG)
-        header.pack(fill="x", padx=32, pady=(24, 16))
-        tk.Label(header, text="Jobs", fg=FG_BRIGHT, bg=BG,
-                 font=("Georgia", 18, "bold"), anchor="w").pack(anchor="w")
-        tk.Label(header,
-                 text="Manage the resume the agent uses to score Indeed listings, "
-                      "or run a quick title/location search without leaving this tab.",
-                 fg=FG_DIM, bg=BG, font=FONT_SM, anchor="w",
-                 wraplength=820, justify="left").pack(anchor="w", pady=(4, 0))
-
-        # ===== CARD 1: Resume =====
-        card1 = self._jobs_card(outer)
-        card1.pack(fill="x", padx=32, pady=(0, 16))
-        self._card_title(card1, "Resume",
-                         "Drop a PDF, DOCX, TXT, or MD. The agent uses it to score "
-                         "every Indeed result against your background.")
-
-        # Single row: left = filename status, right = buttons.
-        row = tk.Frame(card1, bg=BG2)
-        row.pack(fill="x", padx=20, pady=(8, 18))
-
-        self.resume_status_label = tk.Label(
-            row, text="No resume selected.",
-            fg=FG_DIM, bg=BG2, font=FONT, anchor="w",
-        )
-        self.resume_status_label.pack(side="left", fill="x", expand=True)
-
-        # Right-aligned button group, primary green button + small Clear.
-        btn_group = tk.Frame(row, bg=BG2)
-        btn_group.pack(side="right")
-        self.resume_choose_btn = tk.Button(
-            btn_group, text="Choose file...", bg=GREEN, fg=BG,
-            activebackground=FG_BRIGHT, activeforeground=BG,
-            font=("Segoe UI", 10, "bold"), borderwidth=0,
-            padx=14, pady=6, cursor="hand2",
-            command=self._choose_resume,
-        )
-        self.resume_choose_btn.pack(side="left", padx=(0, 8))
-        self.resume_clear_btn = tk.Button(
-            btn_group, text="Clear", bg=BG2, fg=FG_DIM,
-            activebackground=BG3, activeforeground=RED,
-            font=FONT_SM, borderwidth=1, padx=10, pady=5, cursor="hand2",
-            highlightbackground=BORDER,
-            command=self._clear_resume,
-        )
-        self.resume_clear_btn.pack(side="left")
-
-        # ===== CARD 2: Quick Indeed Search =====
-        card2 = self._jobs_card(outer)
-        card2.pack(fill="x", padx=32, pady=(0, 16))
-        self._card_title(card2, "Quick Indeed Search",
-                         "Direct title/location search. For richer agent-driven "
-                         "queries with resume-match scoring, use the Chat tab.")
-
-        # Title row
-        self._labeled_entry_row(card2, "Title", "job_title", width=42, padx=20, pady=(8, 6))
-        # Location row
-        self._labeled_entry_row(card2, "Location", "job_location", width=42, padx=20, pady=(0, 6))
-
-        # Bottom action row
-        action_row = tk.Frame(card2, bg=BG2)
-        action_row.pack(fill="x", padx=20, pady=(8, 18))
-        self.job_status = tk.Label(action_row, text="", fg=FG_DIM, bg=BG2, font=FONT_XS, anchor="w")
-        self.job_status.pack(side="left", fill="x", expand=True)
-        tk.Button(action_row, text="Search", bg=GREEN, fg=BG,
-                  activebackground=FG_BRIGHT, activeforeground=BG,
-                  font=("Segoe UI", 10, "bold"), borderwidth=0,
-                  padx=18, pady=6, cursor="hand2",
-                  command=self._search_jobs).pack(side="right")
-
-        # ===== Results area =====
-        results_card = self._jobs_card(outer)
-        results_card.pack(fill="x", expand=False, padx=32, pady=(0, 24))
-        self._card_title(results_card, "Results", None)
-
-        self.job_results = tk.Text(
-            results_card, bg=BG2, fg=FG, font=FONT_SM, height=14,
-            state="disabled", borderwidth=0, highlightthickness=0,
-            wrap="word", padx=20, pady=4,
-        )
-        self.job_results.pack(fill="both", expand=True, padx=0, pady=(0, 18))
-        self.job_results.tag_configure("title", foreground=GREEN, font=("Segoe UI", 11, "bold"))
-        self.job_results.tag_configure("company", foreground=AMBER, font=FONT_SM)
-        self.job_results.tag_configure("score_high", foreground=GREEN, font=FONT_SM)
-        self.job_results.tag_configure("score_mid", foreground=AMBER, font=FONT_SM)
-        self.job_results.tag_configure("score_low", foreground=RED, font=FONT_SM)
-        self.job_results.tag_configure("dim", foreground=FG_DIM, font=FONT_XS)
-
-    # ----- card helpers used by _build_jobs_panel -----
-
-    def _jobs_card(self, parent):
-        """A grouped section: BG2 panel with a 1px border.
-
-        Single Frame so callers can pack the returned widget into the parent
-        AND pack their children into the same widget. The border is drawn
-        via highlight* options — no outer/inner trick needed.
-        """
-        return tk.Frame(
-            parent, bg=BG2,
-            highlightbackground=BORDER, highlightthickness=1,
-        )
-
-    def _card_title(self, card, title: str, subtitle: str | None):
-        head = tk.Frame(card, bg=BG2)
-        head.pack(fill="x", padx=20, pady=(18, 2))
-        tk.Label(head, text=title, fg=FG_BRIGHT, bg=BG2,
-                 font=("Segoe UI", 13, "bold"), anchor="w").pack(anchor="w")
-        if subtitle:
-            tk.Label(card, text=subtitle, fg=FG_DIM, bg=BG2, font=FONT_SM,
-                     anchor="w", justify="left", wraplength=820).pack(
-                anchor="w", padx=20, pady=(2, 0))
-
-    def _labeled_entry_row(self, card, label_text: str, attr: str,
-                            width: int = 30, padx=20, pady=(6, 6)):
-        row = tk.Frame(card, bg=BG2)
-        row.pack(fill="x", padx=padx, pady=pady)
-        tk.Label(row, text=label_text, fg=FG, bg=BG2, font=FONT,
-                 anchor="w", width=10).pack(side="left")
-        entry = tk.Entry(row, bg=BG, fg=FG_BRIGHT, font=FONT,
-                         insertbackground=GREEN, borderwidth=1,
-                         highlightthickness=1, highlightcolor=GREEN,
-                         highlightbackground=BORDER, width=width)
-        entry.pack(side="left", padx=(12, 0), ipady=5, fill="x", expand=True)
-        setattr(self, attr, entry)
-
-    def _upload_resume(self):
-        """Legacy text-paste upload (deprecated; UI no longer exposes a textbox).
-        Kept for backward compat with /api/jobs/upload-resume callers.
-        """
-        return None
-
-    def _upload_resume(self):
-        text = self.resume_text.get("1.0", "end").strip()
-        if not text:
-            return
-        r = api_post("/api/jobs/upload-resume", {"text": text})
-        if r.get("status") == "ok":
-            self.job_status.configure(text=f"Resume uploaded ({r['length']} chars)", fg=GREEN)
-        else:
-            self.job_status.configure(text=r.get("error", "Upload failed"), fg=RED)
 
     # ----- active resume file selection -----
 
@@ -1083,43 +1061,6 @@ class RAGApp(tk.Tk):
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 
-    def _search_jobs(self):
-        title = self.job_title.get().strip()
-        if not title:
-            return
-        location = self.job_location.get().strip()
-        self.job_status.configure(text="Searching...", fg=AMBER)
-        threading.Thread(target=self._do_job_search, args=(title, location), daemon=True).start()
-
-    def _do_job_search(self, title, location):
-        try:
-            r = api_post("/api/jobs/search", {"title": title, "location": location, "num_results": 10})
-            if r.get("error"):
-                self.after(0, lambda: self.job_status.configure(text=r["error"], fg=RED))
-                return
-
-            jobs = r.get("jobs", [])
-            self.after(0, lambda: self.job_status.configure(text=f"Found {len(jobs)} jobs", fg=GREEN))
-
-            def show():
-                self.job_results.configure(state="normal")
-                self.job_results.delete("1.0", "end")
-                for j in jobs:
-                    score = j.get("match_score", 0)
-                    stag = "score_high" if score >= 70 else "score_mid" if score >= 40 else "score_low"
-                    self.job_results.insert("end", f"{j.get('title', 'Untitled')}\n", "title")
-                    self.job_results.insert("end", f"  {j.get('company', '?')} | {j.get('location', '')}\n", "company")
-                    self.job_results.insert("end", f"  Match: {score}/100", stag)
-                    if j.get("salary"):
-                        self.job_results.insert("end", f"  |  {j['salary']}", "dim")
-                    self.job_results.insert("end", "\n", "dim")
-                    if j.get("match_reason"):
-                        self.job_results.insert("end", f"  {j['match_reason']}\n", "dim")
-                    self.job_results.insert("end", "\n", "dim")
-                self.job_results.configure(state="disabled")
-            self.after(0, show)
-        except Exception as e:
-            self.after(0, lambda: self.job_status.configure(text=str(e), fg=RED))
 
     # ========== DOCS PANEL ==========
     def _build_docs_panel(self):
@@ -1487,10 +1428,63 @@ class RAGApp(tk.Tk):
 
         tk.Label(frame,
                  text="Guide:  4096 = short chats  ·  8192 = default  ·  "
-                      "16384 = long documents  ·  32768 = maximum",
+                      "16384 = long documents  ·  262144 = model maximum",
                  fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w").pack(fill="x", padx=16, pady=(4, 0))
 
         self._load_context_setting()
+
+        # --- Resume ----------------------------------------------------
+        # Lived in the Jobs tab until that was removed. It never belonged
+        # there: the resume feeds usajobs_search's match scoring and the
+        # federal resume drafter, neither of which had anything to do with
+        # the Indeed search the tab was built around.
+        tk.Label(frame, text="RESUME", fg=GREEN, bg=BG, font=FONT_SM,
+                 anchor="w").pack(fill="x", padx=16, pady=(12, 2))
+        tk.Label(frame,
+                 text=("Used to score USAJOBS results against your background "
+                       "and to draft tailored federal resumes. PDF, DOCX, TXT "
+                       "or MD."),
+                 fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w",
+                 wraplength=620, justify="left").pack(fill="x", padx=16)
+        resume_row = tk.Frame(frame, bg=BG)
+        resume_row.pack(fill="x", padx=16, pady=(6, 0))
+        self.resume_status_label = tk.Label(
+            resume_row, text="", fg=FG_DIM, bg=BG, font=FONT_XS,
+            anchor="w", wraplength=420, justify="left")
+        self.resume_status_label.pack(side="left", fill="x", expand=True)
+        self.resume_choose_btn = tk.Button(
+            resume_row, text="CHOOSE FILE", bg=BG, fg=GREEN, font=FONT_XS,
+            command=self._choose_resume, borderwidth=1, padx=8)
+        self.resume_choose_btn.pack(side="left", padx=(8, 4))
+        self.resume_clear_btn = tk.Button(
+            resume_row, text="CLEAR", bg=BG, fg=RED, font=FONT_XS,
+            command=self._clear_resume, borderwidth=1, padx=8)
+        self.resume_clear_btn.pack(side="left")
+        self._refresh_resume_status()
+
+        # --- Reasoning block -------------------------------------------
+        # Off by default. Measured on Qwen3.5 9B, "What is 2+2?" costs 1
+        # token and 0.3s with this off, and 2048 tokens and 52s with it on,
+        # where 2048 is MAX_NEW_TOKENS: the model is still reasoning when
+        # the budget runs out and never reaches an answer. Enabling it is
+        # only sensible alongside a much larger token ceiling, which is
+        # what the warning below says.
+        tk.Label(frame, text="REASONING", fg=GREEN, bg=BG, font=FONT_SM,
+                 anchor="w").pack(fill="x", padx=16, pady=(12, 2))
+        self.thinking_var = tk.BooleanVar(value=False)
+        think_frame = tk.Frame(frame, bg=BG)
+        think_frame.pack(fill="x", padx=16)
+        tk.Checkbutton(think_frame,
+                       text="Let the model think out loud before answering",
+                       variable=self.thinking_var, command=self._save_thinking_setting,
+                       fg=FG, bg=BG, selectcolor=BG, activebackground=BG,
+                       activeforeground=GREEN, font=FONT_XS,
+                       anchor="w").pack(side="left")
+        self.thinking_status = tk.Label(frame, text="", fg=FG_DIM, bg=BG,
+                                        font=FONT_XS, anchor="w",
+                                        wraplength=620, justify="left")
+        self.thinking_status.pack(fill="x", padx=16, pady=(2, 0))
+        self._load_thinking_setting()
 
         btn_f = tk.Frame(frame, bg=BG)
         btn_f.pack(fill="x", padx=16, pady=8)
@@ -1517,23 +1511,35 @@ class RAGApp(tk.Tk):
     def _safe_ctx_for(vram_gb, model_name):
         """Largest context that keeps weights + KV cache inside VRAM.
 
-        KV cache is quantized to q8_0, which halves it versus fp16. For
-        Qwen2.5 the cache costs roughly 0.09 GB per 1024 tokens at 14B and
-        scales down with model size. Returns None when we cannot tell.
+        Reads both numbers from the catalog rather than matching "14B" and
+        "7B" as substrings of the filename, which is what this did while
+        the catalog was Qwen2.5. That version returned None for any name it
+        did not recognise, so every Qwen3.5 filename would have silently
+        blanked the "what your card could handle" figure in Settings.
+
+        KV cache is quantized to q8_0. The per-token cost is measured, not
+        derived, and is the same for every model in this family; see
+        KV_CACHE_GB_PER_1K. Returns None when we cannot tell.
         """
         if not vram_gb or not model_name:
             return None
-        weights = {"14B": 9.0, "7B": 4.4, "3B": 2.1, "1.5B": 1.1}
-        per_1k = {"14B": 0.094, "7B": 0.055, "3B": 0.043, "1.5B": 0.035}
-        tag = next((t for t in weights if t.lower() in model_name.lower()), None)
-        if tag is None:
+        # Local import: the desktop shell talks to the API over HTTP and
+        # deliberately does not pull the model stack in at startup.
+        try:
+            from core.model_manager import MODEL_PROFILE, KV_CACHE_GB_PER_1K
+        except ImportError:
+            return None
+        profile = MODEL_PROFILE.get(model_name)
+        if profile is None:
             return None
         # Leave 1 GB for compute buffers and the desktop.
-        free = vram_gb - weights[tag] - 1.0
+        free = vram_gb - profile["weight_gb"] - 1.0
         if free <= 0:
             return 2048
-        tokens = int((free / per_1k[tag]) * 1024)
-        for step in (32768, 16384, 8192, 4096, 2048):
+        tokens = int((free / KV_CACHE_GB_PER_1K) * 1024)
+        # Ladder stops at the trained window; past it quality falls off
+        # even when the card could hold more.
+        for step in (262144, 131072, 65536, 32768, 16384, 8192, 4096, 2048):
             if tokens >= step:
                 return step
         return 2048
@@ -1587,6 +1593,40 @@ class RAGApp(tk.Tk):
             self.after(0, lambda: self.ctx_status.configure(text=text, fg=FG_DIM))
 
         threading.Thread(target=do, daemon=True).start()
+
+    def _load_thinking_setting(self):
+        try:
+            import config
+            enabled = config.load_thinking_enabled()
+        except Exception as exc:
+            self.thinking_status.configure(text=f"Could not load: {exc}", fg=RED)
+            return
+        self.thinking_var.set(enabled)
+        self._describe_thinking(enabled)
+
+    def _describe_thinking(self, enabled):
+        if enabled:
+            self.thinking_status.configure(
+                text=("On. Answers are slower and spend most of the token "
+                      "budget reasoning first; on short questions the model "
+                      "can run out before it answers. Raise max tokens if "
+                      "you keep this on."),
+                fg=AMBER)
+        else:
+            self.thinking_status.configure(
+                text=("Off. The model answers directly, which is what the "
+                      "context and token budgets are sized for."),
+                fg=FG_DIM)
+
+    def _save_thinking_setting(self):
+        enabled = bool(self.thinking_var.get())
+        try:
+            import config
+            config.save_thinking_enabled(enabled)
+        except Exception as exc:
+            self.thinking_status.configure(text=f"Could not save: {exc}", fg=RED)
+            return
+        self._describe_thinking(enabled)
 
     def _save_context_setting(self):
         """Validate and persist. Bad input gets a message, never a crash."""
@@ -1821,7 +1861,7 @@ class RAGApp(tk.Tk):
                 color = {"good": GREEN, "marginal": AMBER, "poor": RED}.get(tier, FG_DIM)
                 label = {"good": "tools: ready",
                          "marginal": "tools: weak (upgrade model)",
-                         "poor": "tools: broken (switch to 7B/14B)"}.get(tier, "tools: --")
+                         "poor": "tools: untested on this model"}.get(tier, "tools: --")
                 self.status_tools.configure(text=label, foreground=color)
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()

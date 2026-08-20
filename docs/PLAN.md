@@ -195,6 +195,25 @@ land together and CI goes green, you cannot tell which one did it.
 - Both entry points still start on a machine where inference is
   installed, with CUDA initializing as before.
 
+**Status: done**, branch `pr1a-optional-inference`. Dependency resolution
+went from 6 failing combinations to 0, across 3.10, 3.11, and 3.12 on both
+linux and windows wheel tags. Only numpy had the interpreter-range bug;
+the other 19 pins resolve on all three. A fresh 3.12 venv installs
+`-e ".[dev]"` with no extra index, no compiler, and no
+`llama-cpp-python`, and `pytest` reports 45 passed there.
+
+One module-scope import moved (`src/generator.py:30`), which was the only
+one in the repository. Five tests were added under a simulated absence of
+the library. The three `nvidia-*-cu12` packages moved into the extra with
+it: they exist only to feed CUDA DLLs to the llama-cpp wheel, and
+`scripts/install_llama_cpp.py` pip installs them itself on the CUDA path,
+so the declaration was never what put them on a user's machine.
+
+`setup.bat` needed no change, but `docs/SETUP_GUIDE.md` did: its manual
+install path said `pip install -r requirements.txt` installs
+llama-cpp-python, which stopped being true, so that path now calls
+`scripts/install_llama_cpp.py` explicitly.
+
 ---
 
 ### PR2: continuous integration

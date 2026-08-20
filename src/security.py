@@ -258,6 +258,30 @@ def _read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+def load_env_file(path: Path = ENV_PATH) -> list[str]:
+    """Copy settings from `.env` into the process environment.
+
+    Returns the names it set, for logging. Existing environment variables
+    always win, so a real env var or one set on the command line still
+    overrides the file.
+
+    This exists because `.env` looked like it worked and did not. The file
+    was parsed for the API token and nothing else, while every other
+    consumer reads `os.environ` directly: `usajobs_search.py` fetches
+    USAJOBS_API_KEY and USAJOBS_API_EMAIL that way. A user who put their
+    key in `.env`, which is the obvious place, got no error and no API
+    mode. The tool quietly fell back to browser-handoff, returned zero
+    listings, and the model was left with nothing to answer from.
+    """
+    applied: list[str] = []
+    for key, value in _read_env_file(path).items():
+        if not key or key in os.environ:
+            continue
+        os.environ[key] = value
+        applied.append(key)
+    return applied
+
+
 def _write_env_file(path: Path, values: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["{}={}".format(k, v) for k, v in values.items()]

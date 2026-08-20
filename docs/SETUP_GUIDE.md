@@ -69,15 +69,20 @@ With the virtual environment activated:
 ```
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
+python scripts\install_llama_cpp.py
 ```
 
-This installs PyTorch, transformers, sentence-transformers, FAISS, llama-cpp-python, and everything else. PyTorch is around 2 GB so it takes a few minutes.
+The first two lines install PyTorch, transformers, sentence-transformers, FAISS, and everything else. PyTorch is around 2 GB so it takes a few minutes.
+
+The third line installs the local inference engine, llama-cpp-python. It is a separate step because PyPI carries no prebuilt wheels for it, so a plain `pip install` would try to compile it from source and need a C++ toolchain. `scripts/install_llama_cpp.py` picks the right prebuilt GPU or CPU wheel for your machine and wires in the CUDA runtime DLLs. `setup.bat` runs the same script, so the automatic path already does this for you.
+
+Skip that third line only if you do not intend to run a model: the app needs it, but the document extraction gate, the tests, and the linters all work without it.
 
 ---
 
 ## 5. Download the AI Model
 
-The model is the only thing not included in the repo because it is 1.1 GB and GitHub has a 100 MB file limit.
+The model is the only thing not included in the repo because it is about 3 GB and GitHub has a 100 MB file limit.
 
 ### Option A: Run the download script
 
@@ -97,17 +102,17 @@ With your virtual environment activated:
 
 ```
 pip install huggingface-hub
-huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir models/
+huggingface-cli download bartowski/Qwen_Qwen3.5-4B-GGUF Qwen_Qwen3.5-4B-Q4_K_M.gguf --local-dir models/
 ```
 
 ### Option C: Download directly from your browser
 
-1. Go to [huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF)
+1. Go to [huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF)
 2. Click on **Files and versions**
-3. Find the file named `qwen2.5-1.5b-instruct-q4_k_m.gguf` and click the download arrow next to it
+3. Find the file named `Qwen_Qwen3.5-4B-Q4_K_M.gguf` and click the download arrow next to it
 4. Save it into the `models/` folder inside your project directory
 
-The filename must match exactly. If it downloads with a different name, rename it to `qwen2.5-1.5b-instruct-q4_k_m.gguf`.
+The filename must match exactly, including the doubled `Qwen_Qwen` prefix, which is that publisher's naming convention rather than a mistake. A file saved under any other name is invisible to the app.
 
 ---
 
@@ -117,14 +122,11 @@ If you have extra RAM and want better quality answers, you can swap in a bigger 
 
 | Model | File to Download | Size | Link |
 |---|---|---|---|
-| Qwen2.5-3B (recommended upgrade) | `qwen2.5-3b-instruct-q4_k_m.gguf` | ~2.1 GB | [Download](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF) |
-| Qwen2.5-7B (best quality) | `qwen2.5-7b-instruct-q4_k_m.gguf` | ~4.4 GB | [Download](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF) |
+| Qwen3.5-9B (best quality) | `Qwen_Qwen3.5-9B-Q4_K_M.gguf` | ~6.2 GB | [Download](https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF) |
 
-After downloading a new model, open `src/config.py` and change the `GGUF_MODEL_PATH` line to point to the new filename:
+The easier route is the **Models tab in the app**, which downloads and switches for you and is the only place that records your choice.
 
-```python
-GGUF_MODEL_PATH = PROJECT_ROOT.parent / "models" / "qwen2.5-3b-instruct-q4_k_m.gguf"
-```
+You do not need to edit `src/config.py`. The app reads which model to use from `data/model_state.json`, written when you pick one in the Models tab, and falls back to whatever it finds in `models/` if that file is missing. Editing `GGUF_MODEL_PATH` by hand is not how the setting is read.
 
 ---
 
@@ -187,6 +189,8 @@ Using more threads than your physical core count will actually slow things down,
 **Red execution policy error in PowerShell**: Run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` first, or use Command Prompt instead.
 
 **"No module named X"**: Dependencies did not install into your venv. Activate the venv, then run `pip install -r requirements.txt`.
+
+**"Local inference is not installed"**: llama-cpp-python is missing, which happens if you followed the manual install and skipped `python scripts\install_llama_cpp.py`. Run it now (see Step 4). Everything that does not load a model keeps working without it.
 
 **"Model file not found"**: The GGUF file is not in the `models/` folder or has the wrong filename. See Step 5.
 

@@ -13,32 +13,24 @@ echo  ===================================
 echo.
 echo  Available models:
 echo.
-echo    1) Qwen 2.5 1.5B  (~1.1 GB download, ~4 GB RAM)   - Fast, basic quality
-echo    2) Qwen 2.5 3B    (~2.1 GB download, ~6 GB RAM)   - Good balance
-echo    3) Qwen 2.5 7B    (~4.4 GB download, ~10 GB RAM)  - Great quality
-echo    4) Qwen 2.5 14B   (~8.9 GB download, ~16 GB RAM)  - Best quality
+echo    1) Qwen 3.5 4B    (~3.0 GB download, ~6 GB RAM)   - Default, runs anywhere
+echo    2) Qwen 3.5 9B    (~6.2 GB download, ~12 GB RAM)  - Best quality, wants a GPU
 echo.
 
-set /p "CHOICE=Pick a model (1-4): "
+set /p "CHOICE=Pick a model (1-2): "
 
+:: Repo and filename must match AVAILABLE_MODELS in src/config.py exactly.
+:: A file downloaded under any other name is invisible to the app.
 if "%CHOICE%"=="1" (
-    set "REPO=Qwen/Qwen2.5-1.5B-Instruct-GGUF"
-    set "FILE=qwen2.5-1.5b-instruct-q4_k_m.gguf"
-    set "LABEL=Qwen 2.5 1.5B"
+    set "REPO=bartowski/Qwen_Qwen3.5-4B-GGUF"
+    set "FILE=Qwen_Qwen3.5-4B-Q4_K_M.gguf"
+    set "LABEL=Qwen 3.5 4B"
 ) else if "%CHOICE%"=="2" (
-    set "REPO=Qwen/Qwen2.5-3B-Instruct-GGUF"
-    set "FILE=qwen2.5-3b-instruct-q4_k_m.gguf"
-    set "LABEL=Qwen 2.5 3B"
-) else if "%CHOICE%"=="3" (
-    set "REPO=Qwen/Qwen2.5-7B-Instruct-GGUF"
-    set "FILE=qwen2.5-7b-instruct-q4_k_m.gguf"
-    set "LABEL=Qwen 2.5 7B"
-) else if "%CHOICE%"=="4" (
-    set "REPO=bartowski/Qwen2.5-14B-Instruct-GGUF"
-    set "FILE=Qwen2.5-14B-Instruct-Q4_K_M.gguf"
-    set "LABEL=Qwen 2.5 14B"
+    set "REPO=bartowski/Qwen_Qwen3.5-9B-GGUF"
+    set "FILE=Qwen_Qwen3.5-9B-Q4_K_M.gguf"
+    set "LABEL=Qwen 3.5 9B"
 ) else (
-    echo Invalid choice. Please run again and pick 1-4.
+    echo Invalid choice. Please run again and pick 1-2.
     pause
     exit /b 1
 )

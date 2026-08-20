@@ -69,9 +69,14 @@ With the virtual environment activated:
 ```
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
+python scripts\install_llama_cpp.py
 ```
 
-This installs PyTorch, transformers, sentence-transformers, FAISS, llama-cpp-python, and everything else. PyTorch is around 2 GB so it takes a few minutes.
+The first two lines install PyTorch, transformers, sentence-transformers, FAISS, and everything else. PyTorch is around 2 GB so it takes a few minutes.
+
+The third line installs the local inference engine, llama-cpp-python. It is a separate step because PyPI carries no prebuilt wheels for it, so a plain `pip install` would try to compile it from source and need a C++ toolchain. `scripts/install_llama_cpp.py` picks the right prebuilt GPU or CPU wheel for your machine and wires in the CUDA runtime DLLs. `setup.bat` runs the same script, so the automatic path already does this for you.
+
+Skip that third line only if you do not intend to run a model: the app needs it, but the document extraction gate, the tests, and the linters all work without it.
 
 ---
 
@@ -187,6 +192,8 @@ Using more threads than your physical core count will actually slow things down,
 **Red execution policy error in PowerShell**: Run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` first, or use Command Prompt instead.
 
 **"No module named X"**: Dependencies did not install into your venv. Activate the venv, then run `pip install -r requirements.txt`.
+
+**"Local inference is not installed"**: llama-cpp-python is missing, which happens if you followed the manual install and skipped `python scripts\install_llama_cpp.py`. Run it now (see Step 4). Everything that does not load a model keeps working without it.
 
 **"Model file not found"**: The GGUF file is not in the `models/` folder or has the wrong filename. See Step 5.
 

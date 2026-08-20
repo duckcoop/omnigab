@@ -27,8 +27,6 @@ import time
 from pathlib import Path
 from typing import AsyncIterator
 
-from llama_cpp import Llama
-
 from config import (
     GENERATION_MODEL, GGUF_MODEL_PATH, MAX_NEW_TOKENS,
     TEMPERATURE, TOP_P, CONTEXT_WINDOW, N_THREADS,
@@ -43,6 +41,60 @@ from security import (
 
 _STOP_TOKENS = ["<|im_end|>", "<|im_start|>", "<|endoftext|>"]
 
+# llama-cpp-python is an optional dependency: it publishes an sdist only on
+# PyPI, so requiring it would make a plain install attempt a source build.
+# It is imported when a model is actually loaded, which is the only moment
+# it is needed. Everything else in the project (the gate, the schema, the
+# tool protocol, the whole default test suite) imports without it.
+INFERENCE_MISSING_MESSAGE = (
+    "Local inference is not installed.\n\n"
+    "omnigab runs models through llama-cpp-python, which is an optional\n"
+    "dependency because PyPI carries no prebuilt wheels for it.\n\n"
+    "To fix this, either:\n"
+    "  1. Run setup.bat, which installs the right GPU or CPU wheel for\n"
+    "     this machine, or\n"
+    "  2. Install it yourself with the prebuilt wheel index:\n"
+    '       pip install "omnigab[inference]" --extra-index-url \\\n'
+    "         https://abetlen.github.io/llama-cpp-python/whl/cpu\n\n"
+    "Everything that does not need a model keeps working without it."
+)
+
+
+class InferenceUnavailable(RuntimeError):
+    """Raised when a model load is attempted with no inference library.
+
+    A distinct type so the web app can answer with the message above
+    instead of a 500, the same way it already distinguishes a missing
+    model file from a genuine load failure.
+    """
+
+
+def inference_available() -> bool:
+    """Whether llama-cpp-python can be imported at all.
+
+    Shaped like `cuda_supported()` in core/model_manager.py, which answers
+    the neighbouring question of whether the wheel has GPU support.
+    """
+    try:
+        import llama_cpp  # noqa: F401  (probe only)
+        return True
+    except ImportError:
+        return False
+
+
+def _load_llama_class():
+    """Import and return `llama_cpp.Llama`, or raise a message a user can act on.
+
+    Only ImportError is converted. A wheel that imports but fails for some
+    other reason (a missing CUDA DLL, for instance) should surface its own
+    error rather than be reported as "not installed".
+    """
+    try:
+        from llama_cpp import Llama
+    except ImportError as exc:
+        raise InferenceUnavailable(INFERENCE_MISSING_MESSAGE) from exc
+    return Llama
+
 
 class Generator:
     """GGUF-based text generator using llama-cpp-python."""
@@ -55,6 +107,11 @@ class Generator:
         n_threads: int = N_THREADS,
         n_batch: int = 1024,
     ):
+        # Resolved here rather than at module scope so importing this file
+        # does not require the inference library. Raises InferenceUnavailable
+        # with an actionable message when it is missing.
+        llama_class = _load_llama_class()
+
         path = model_path or str(GGUF_MODEL_PATH)
         gpu_msg = "(GPU offload)" if n_gpu_layers != 0 else "(CPU only)"
         print(f"Loading GGUF model: {Path(path).name} {gpu_msg}")
@@ -101,7 +158,7 @@ class Generator:
                 llm_kwargs["type_v"] = kv_type
 
         try:
-            self.llm = Llama(**llm_kwargs)
+            self.llm = llama_class(**llm_kwargs)
         except TypeError as exc:
             # Some llama-cpp-python wheels still differ. Drop the perf
             # extras one-by-one rather than all at once so n_ubatch /
@@ -111,7 +168,7 @@ class Generator:
                 if k in llm_kwargs:
                     llm_kwargs.pop(k)
                     try:
-                        self.llm = Llama(**llm_kwargs)
+                        self.llm = llama_class(**llm_kwargs)
                         print(f"[generator] succeeded after dropping {k}")
                         break
                     except TypeError:
@@ -119,7 +176,7 @@ class Generator:
             else:
                 # Final fallback — also drop n_ubatch if everything still fails.
                 llm_kwargs.pop("n_ubatch", None)
-                self.llm = Llama(**llm_kwargs)
+                self.llm = llama_class(**llm_kwargs)
                 print("[generator] succeeded with bare-minimum args")
 
         size_gb = Path(path).stat().st_size / 1e9

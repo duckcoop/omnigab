@@ -273,6 +273,20 @@ class ModelManager:
     def load(self, filename: str) -> dict:
         if filename not in AVAILABLE_MODELS:
             raise ValueError(f"Unknown model: {filename}")
+
+        # Checked before the model file, deliberately. With neither present
+        # the missing library is the more fundamental problem and the one
+        # setup.bat fixes, so naming the download first would send the user
+        # after the wrong thing. Local import to match how this function
+        # already pulls Generator in below.
+        from generator import (
+            InferenceUnavailable,
+            INFERENCE_MISSING_MESSAGE,
+            inference_available,
+        )
+        if not inference_available():
+            raise InferenceUnavailable(INFERENCE_MISSING_MESSAGE)
+
         path = MODELS_DIR / filename
         if not path.exists():
             # This message is the first thing a new user sees if setup did
@@ -291,7 +305,7 @@ class ModelManager:
 
         with self._lock:
             self._unload_locked()
-            from generator import Generator  # local import: avoid top-level llama_cpp load
+            from generator import Generator  # local import: keeps boot light
 
             n_ctx, n_batch = optimal_context(filename, self.vram_gb if self.gpu_supported else 0)
             self.n_ctx = n_ctx

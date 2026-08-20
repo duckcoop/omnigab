@@ -28,15 +28,15 @@ dependencies = [
     "sentence-transformers>=5.6,<6.0",
     "faiss-cpu>=1.14,<2.0",
     "langchain-text-splitters>=1.1,<2.0",
-    "numpy>=2.5,<3.0",
+    # Floor is 2.2, not the 2.5 that was installed when this file was
+    # written. Every numpy from 2.5 up declares requires-python >=3.12 and
+    # ships cp312 wheels upward only, which contradicts the 3.10 floor
+    # eight lines above and made the project uninstallable on 3.10 and
+    # 3.11 on every platform. 2.2.6 is the last release carrying cp310
+    # wheels, and pip picks 2.4.x on 3.11 and 2.5.x on 3.12 from this
+    # range anyway, so nothing is given up on a modern interpreter.
+    "numpy>=2.2,<3.0",
     "accelerate>=1.14,<2.0",
-    # Deliberately loose on the lower bound, unlike everything else here.
-    # setup.bat installs llama-cpp-python FIRST from abetlen's prebuilt CUDA
-    # wheel index, then runs pip install -r requirements.txt. That index
-    # lags PyPI, so a lower bound pinned to the installed patch (0.3.34)
-    # would make pip "upgrade" the GPU wheel to a CPU-only build from PyPI
-    # and silently kill GPU offload. Any 0.3.x is compatible with our usage.
-    "llama-cpp-python>=0.3,<0.4",
     "colorama>=0.4.6,<0.5.0",
     "rich>=15.0,<16.0",
     "ddgs>=9.14,<10.0",
@@ -52,18 +52,6 @@ dependencies = [
     "psutil>=7.2,<8.0",
     "playwright>=1.61,<2.0",
     "docx2txt>=0.9,<0.10",
-
-    # CUDA runtime DLLs for the prebuilt llama-cpp-python CUDA wheel.
-    # These are required on Windows when the system does not have the full
-    # CUDA Toolkit installed. scripts/install_cuda_dlls.py copies them next
-    # to llama.dll after pip install.
-    #
-    # These do not follow semver: the version tracks the CUDA release. The
-    # CUDA major is already baked into the package name (cu12), so the
-    # ceiling stops us drifting onto a CUDA 13 runtime under a cu12 name.
-    "nvidia-cuda-runtime-cu12>=12.9,<13.0; platform_system == 'Windows'",
-    "nvidia-cublas-cu12>=12.9,<13.0; platform_system == 'Windows'",
-    "nvidia-cuda-nvrtc-cu12>=12.9,<13.0; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
@@ -71,6 +59,48 @@ dev = [
     "pytest>=9.1,<10.0",
     "pytest-cov>=7.1,<8.0",
     "flake8>=7.3,<8.0",
+]
+
+# Local inference. Optional because llama-cpp-python publishes an sdist
+# only on PyPI, zero wheels on every platform, so a plain
+# `pip install -e .` would try a source build needing CMake and a C++
+# toolchain. Nothing outside src/generator.py imports it, the default test
+# suite loads no model, and AGENTS.md invariant I7 says the tests must pass
+# with no GPU and no model, so requiring it was never right.
+#
+# Real users are unaffected: setup.bat runs scripts/install_llama_cpp.py
+# BEFORE pip, and that script installs a prebuilt CUDA or CPU wheel from
+# abetlen's index. Install this extra by hand only with that index
+# supplied, otherwise pip falls back to the source build:
+#
+#   pip install -e ".[inference]" \
+#     --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+inference = [
+    # Deliberately loose on the lower bound, unlike everything else here.
+    # setup.bat installs llama-cpp-python FIRST from abetlen's prebuilt CUDA
+    # wheel index, then runs pip install -r requirements.txt. That index
+    # lags PyPI, so a lower bound pinned to the installed patch (0.3.34)
+    # would make pip "upgrade" the GPU wheel to a CPU-only build from PyPI
+    # and silently kill GPU offload. Any 0.3.x is compatible with our usage.
+    "llama-cpp-python>=0.3,<0.4",
+
+    # CUDA runtime DLLs for the prebuilt llama-cpp-python CUDA wheel.
+    # These are required on Windows when the system does not have the full
+    # CUDA Toolkit installed. scripts/install_cuda_dlls.py copies them next
+    # to llama.dll after pip install.
+    #
+    # They live here rather than in the base dependencies because they
+    # exist only to feed DLLs to the llama-cpp CUDA wheel, so they are
+    # meaningless without it. Note that this declaration is not what puts
+    # them on a user's machine either way: install_llama_cpp.py pip
+    # installs all three itself on the CUDA path.
+    #
+    # These do not follow semver: the version tracks the CUDA release. The
+    # CUDA major is already baked into the package name (cu12), so the
+    # ceiling stops us drifting onto a CUDA 13 runtime under a cu12 name.
+    "nvidia-cuda-runtime-cu12>=12.9,<13.0; platform_system == 'Windows'",
+    "nvidia-cublas-cu12>=12.9,<13.0; platform_system == 'Windows'",
+    "nvidia-cuda-nvrtc-cu12>=12.9,<13.0; platform_system == 'Windows'",
 ]
 
 # src/ is a flat layout: four packages plus 22 loose top-level modules that

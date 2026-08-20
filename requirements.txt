@@ -10,4 +10,9 @@
 #
 # Developers want the test and lint tools too:
 #     pip install -e ".[dev]"
+#
+# Deliberately NOT ".[inference]". llama-cpp-python has no wheels on PyPI,
+# so asking for it here would make this file trigger a source build needing
+# CMake. setup.bat installs it before this line ever runs, from a prebuilt
+# wheel index, via scripts/install_llama_cpp.py.
 -e .

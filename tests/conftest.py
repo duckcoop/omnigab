@@ -11,10 +11,53 @@ are declared in `pyproject.toml` and applied to individual tests.
 
 from __future__ import annotations
 
+import importlib
+import sys
+
 import pytest
 
 from persistent_memory import PersistentMemory
 from tools.usajobs_search import UsaJobsSearchTool
+
+
+class _BlockLlamaCpp:
+    """A meta path finder that refuses one package and ignores the rest."""
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "llama_cpp" or fullname.startswith("llama_cpp."):
+            raise ImportError(f"No module named {fullname!r} (blocked by test)")
+        return None
+
+
+@pytest.fixture
+def no_llama_cpp(monkeypatch):
+    """Make llama-cpp-python look absent, and give back a reimport helper.
+
+    Simulated rather than uninstalled, because the point is to reproduce a
+    stranger's machine on a developer's machine where the library is
+    present. A `sys.meta_path` finder is the honest simulation: it makes
+    the import fail exactly where a missing package would, rather than
+    patching the call sites that are supposed to be under test.
+
+    Yields a function that imports a module fresh under the block.
+    `monkeypatch` restores `sys.meta_path` and every `sys.modules` entry
+    touched here at teardown, so the block cannot leak into the rest of
+    the session.
+    """
+    monkeypatch.setattr(sys, "meta_path", [_BlockLlamaCpp(), *sys.meta_path])
+    for name in [n for n in sys.modules if n.split(".")[0] == "llama_cpp"]:
+        monkeypatch.delitem(sys.modules, name)
+
+    def reimport(module_name: str):
+        # Drop the module and its submodules so the import really re-runs
+        # rather than handing back the cached object imported at collection
+        # time, when llama_cpp was still reachable.
+        for name in [n for n in sys.modules
+                     if n == module_name or n.startswith(module_name + ".")]:
+            monkeypatch.delitem(sys.modules, name)
+        return importlib.import_module(module_name)
+
+    return reimport
 
 
 @pytest.fixture(autouse=True)

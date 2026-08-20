@@ -545,9 +545,15 @@ async def api_model_switch(request: Request):
     filename = (body.get("filename") or "").strip()
     if mm is None:
         return JSONResponse({"error": "ModelManager not ready"}, status_code=503)
+    from generator import InferenceUnavailable  # local: no llama_cpp at import
     try:
         status = await asyncio.to_thread(mm.load, filename)
     except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except InferenceUnavailable as exc:
+        # Same treatment as a model that is not downloaded: the environment
+        # is incomplete and the message says how to complete it, which is
+        # not a server fault and reads badly as a 500.
         return JSONResponse({"error": str(exc)}, status_code=400)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)

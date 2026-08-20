@@ -39,20 +39,6 @@ Each item was considered and explicitly deferred — not forgotten.
 - **Context:** Needs cross-document obligation matching — same machinery the auditor needs; build them together.
 - **Blocked by:** reconciliation design (above).
 
-## `llama-cpp-python` ships no wheels on PyPI, which PR2's CI will hit
-
-- **What:** PyPI carries an sdist only for `llama-cpp-python` 0.3.34, zero wheels, on every platform. A bare `pip install -e .` therefore tries a source build that needs CMake and a C++ toolchain. `setup.bat` never notices because `scripts/install_llama_cpp.py` installs a prebuilt wheel from `abetlen.github.io` first, and the dependency is already satisfied by the time `pip install -r requirements.txt` runs.
-- **Why:** PR2 puts `pip install -e ".[dev]"` in a GitHub Actions job on `ubuntu-latest` and `windows-latest`. Neither will resolve the dependency from PyPI without a compile step measured in minutes, against a five minute wall clock budget for the whole workflow.
-- **Context:** Found during PR0 while verifying a clean venv install, which succeeds when `--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu` is passed and fails without it. Options for PR2, none free: add that index to the workflow's pip invocation; or move `llama-cpp-python` to an optional extra so the offline test suite installs without it, which suits a default `pytest` run that already needs no model. The second is cleaner and touches `pyproject.toml` only, but it is a dependency-shape decision, not a packaging mechanics one, so PR0 left it alone.
-- **Blocked by:** nothing. Decide it as part of PR2 rather than discovering it in a red CI run.
-
-## The pinned `numpy` floor requires Python 3.12, which the declared range contradicts
-
-- **What:** `pyproject.toml:31` pins `numpy>=2.5,<3.0`. Every release in that range declares `requires-python = ">=3.12"` and ships cp312 wheels upward only: 2.5.0, 2.5.1, and 2.5.2 all carry cp312, cp313, and cp314 tags and nothing lower. The last numpy with cp310 and cp311 wheels is 2.2.6, which declares `>=3.10`. Meanwhile `pyproject.toml:17` declares `requires-python = ">=3.10,<3.13"` and AGENTS.md section 5 says "Python 3.10 to 3.12". `pip install -e ".[dev]"` on Python 3.10 or 3.11 therefore fails to resolve at all, on Linux and Windows equally. Only 3.12 installs.
-- **Why:** PR2's matrix is 3.10, 3.11, and 3.12 on `ubuntu-latest` plus 3.11 on `windows-latest`. Three of those four legs die on dependency resolution before a single test runs, and the failure reads as a CI problem when it is a pin problem. It also means the supported range advertised by the package has not been true since PR0.
-- **Context:** Found while scoping PR2, by resolving the full dependency set against each interpreter with `pip install --dry-run --only-binary=:all: --platform manylinux_2_28_x86_64 --python-version 3.10`. Of the 24 pinned requirements only two fail on 3.10: this one and `llama-cpp-python` (above). Relaxing the floor to `numpy>=2.2,<3.0` resolves cleanly on all three interpreters: 3.10 selects numpy 2.2.6, 3.11 selects 2.4.6, 3.12 selects 2.5.2, and the full set comes to 97 or 98 packages with no other conflict. The cause is PR0's stated pinning rule, which anchors every floor to the version installed and working on the dev machine, and so recorded a 3.12-only floor on a project that claims 3.10. The alternative to relaxing is to keep the floor and narrow `requires-python` to `>=3.12,<3.13`, correcting AGENTS.md section 5 and dropping two matrix legs, which gives up the cross-version coverage the matrix exists to provide.
-- **Blocked by:** nothing, but it has to land alongside the `llama-cpp-python` decision above, since the two of them block the same install. PR1a's to absorb.
-
 ## Flat top-level module names now reach site-packages
 
 - **What:** PR0 installs `src/` with `package-dir = {"" = "src"}`, so `config`, `core`, `tools`, `jobs`, `security`, `generator`, `ingest`, `embeddings`, `verifier`, and `vectorstore` become importable top-level names in any environment that installs omnigab. Several are generic enough to collide with an unrelated distribution.

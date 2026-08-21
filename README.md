@@ -37,11 +37,68 @@ That constraint shapes everything else here.
 
 **Draft a federal resume.** Using your existing resume plus what it remembers about you, it drafts a tailored federal-style resume for a specific posting.
 
-**Look up vulnerabilities.** Queries the NIST National Vulnerability Database and the CISA Known Exploited Vulnerabilities catalog for real CVE data.
+**Look up vulnerabilities.** Queries the NIST National Vulnerability Database 2.0 API and the CISA Known Exploited Vulnerabilities catalog for real CVE data: full records with CVSS severity, KEV membership, and the remediation due dates CISA sets for federal agencies. The KEV catalog is cached locally for 24 hours rather than refetched per query. NVD is rate limited to 5 requests per 30 seconds without a key and returns 503s under load, so the tool is written to always return a structured result with a readable error instead of throwing.
 
 **Do exact math.** Rather than guessing at arithmetic, it runs code in a sandboxed Python tool.
 
 **Run drop-in skills.** Small folders that extend it. Ships with document summarizing, action item extraction, document comparison, and cited web search.
+
+---
+
+## How it is built
+
+The interesting problem in this project is not getting a model to talk. It
+is knowing when to believe it, and noticing quickly when something breaks.
+
+**Verify, do not trust.** The extraction path never shows a value the model
+asserted. It shows values that code confirmed against the source document
+by exact string match, and discards the rest. Three verdicts, not two:
+confirmed, needs a human look, rejected. Collapsing that to a boolean would
+force every uncertain case into either lying to the user or hiding a real
+obligation from them.
+
+**One command tells you if it is broken.** `verify.bat` runs flake8 and the
+full test suite and exits non-zero on either. 67 tests, and the default run
+needs no GPU, no model file, and no network, because that is what a
+stranger cloning the repo actually has.
+
+**Measure instead of inheriting.** Numbers in this codebase are measured on
+the hardware and cited where they are used, not carried forward from
+whatever was true once:
+
+- KV cache cost is 16.2 MB per 1024 tokens on the 9B and 16.6 on the 4B,
+  taken from the VRAM slope between two context sizes on an RTX 4070 SUPER.
+  The previous figure was 0.09 GB, inherited from a different model, with a
+  comment claiming it scaled with model size. Both halves were wrong: it is
+  5.6x cheaper and identical across both models, because they share a KV
+  geometry.
+- The context ceiling is 262144, read out of the GGUF metadata, not the
+  32768 that had been assumed.
+- Model file sizes are the bytes on disk. Both quants came in larger than
+  their size class implied, and the autotuner subtracts that figure from
+  VRAM to size the cache, so a low guess is exactly what pushes the cache
+  into system RAM and collapses throughput.
+
+**Hardware aware at runtime.** VRAM is detected through `nvidia-smi` and RAM
+through `psutil`, the model is auto-selected against both, and context and
+batch size are tuned so weights plus cache stay inside VRAM. GPU offload is
+verified after load rather than assumed, because a CPU-only wheel accepts
+the offload flag silently and then runs 10x slower with no error.
+
+**Findings get written down, with reproduction.** `docs/TODOS.md` is a log
+of problems found and deliberately not fixed yet, each with what it is, why
+it matters, how it was found, and what unblocks it. Examples currently
+open: 19 `print` sites that raise `UnicodeEncodeError` on a cp1252 console
+and will break a Windows CI runner, and three handlers that call
+`NameError` at the exact moment they are supposed to display an error,
+because a lambda reads an `except ... as e` variable after Python has
+unbound it.
+
+**Documented constraints.** `AGENTS.md` records the invariants that must not
+be broken and why, so the reasoning survives past the commit that created
+it. `docs/PLAN.md` sequences the work and commits to a kill criterion for
+the extraction feature before any results exist, so the threshold cannot be
+moved after seeing them.
 
 ---
 

@@ -75,7 +75,7 @@ def print_system_info(agent: RAGAgent):
 
 def display_retrieved_context(sources: list):
     """Show retrieved chunks in blue panels."""
-    console.print(Rule("[bold bright_blue]📄 Retrieved Context[/bold bright_blue]"))
+    console.print(Rule("[bold bright_blue]Retrieved Context[/bold bright_blue]"))
 
     for i, src in enumerate(sources, 1):
         score_pct = f"{src['score']:.0%}"
@@ -93,7 +93,7 @@ def display_retrieved_context(sources: list):
 
 def display_raw_answer(answer: str):
     """Show the raw generated answer in yellow."""
-    console.print(Rule("[bold yellow]💬 Raw Generated Answer[/bold yellow]"))
+    console.print(Rule("[bold yellow]Raw Generated Answer[/bold yellow]"))
     console.print(
         Panel(
             Text(answer, style="yellow"),
@@ -105,7 +105,7 @@ def display_raw_answer(answer: str):
 
 def display_verification(verification):
     """Show the verification report with per-claim verdicts."""
-    console.print(Rule("[bold bright_cyan]🔍 Verification Report[/bold bright_cyan]"))
+    console.print(Rule("[bold bright_cyan]Verification Report[/bold bright_cyan]"))
 
     # Summary stats
     supported = sum(1 for c in verification.claims if c.supported)
@@ -160,12 +160,12 @@ def display_verification(verification):
     if verification.removed_claims:
         console.print()
         for claim in verification.removed_claims:
-            console.print(f"  [red]✗[/red] [dim strikethrough]{claim}[/dim strikethrough]")
+            console.print(f"  [red]x[/red] [dim strikethrough]{claim}[/dim strikethrough]")
 
 
 def display_final_answer(answer: str, result: dict):
     """Show the final verified answer in green."""
-    console.print(Rule("[bold green]✅ Verified Answer[/bold green]"))
+    console.print(Rule("[bold green][ok] Verified Answer[/bold green]"))
     console.print(
         Panel(
             Text(answer, style="bold green"),
@@ -190,14 +190,14 @@ def display_final_answer(answer: str, result: dict):
     perf_parts.append(f"retrieve={r_time}s")
     perf_parts.append(f"generate={g_time}s")
 
-    console.print(f"  [dim]{' │ '.join(perf_parts)}[/dim]")
+    console.print(f"  [dim]{' | '.join(perf_parts)}[/dim]")
     console.print()
 
 
 def run_query(agent: RAGAgent, question: str):
     """Execute a full query and display all stages with Rich formatting."""
     console.print()
-    console.print(f"[bold white]❓ {question}[/bold white]")
+    console.print(f"[bold white]{question}[/bold white]")
     console.print()
 
     with console.status("[bold cyan]Searching documentation...[/bold cyan]"):

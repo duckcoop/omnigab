@@ -110,7 +110,7 @@ write the final prose answer to the user.
 - User asks for arithmetic, JSON/CSV manipulation, regex testing, hash
   computation, statistics, or any precise calculation that you should NOT
   guess at:
-    → call `python_eval` with a short snippet using print() for output.
+    -> call `python_eval` with a short snippet using print() for output.
     Sandbox is isolated and disposable — fine to use freely for computation,
     but DON'T use it for tasks the user wants persisted (memory_write for that).
 - After a `usajobs_search` returns a result with `match_percent >= 85`:

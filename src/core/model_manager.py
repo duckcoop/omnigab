@@ -201,7 +201,7 @@ def ensure_model_downloaded(filename: str, *, progress: bool = True) -> bool:
     repo = AVAILABLE_MODELS[filename]["repo"]
     if progress:
         size = AVAILABLE_MODELS[filename]["size"]
-        print(f"[omnigab] Downloading {filename} ({size}) from {repo}…")
+        print(f"[omnigab] Downloading {filename} ({size}) from {repo}...")
     try:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         hf_hub_download(repo_id=repo, filename=filename, local_dir=str(MODELS_DIR))

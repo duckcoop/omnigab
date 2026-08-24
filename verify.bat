@@ -15,7 +15,7 @@ if not exist "%PY%" (
 
 echo.
 echo ============================================================
-echo  1/2  flake8
+echo  1/3  flake8
 echo ============================================================
 "%PY%" -m flake8 src tests
 if errorlevel 1 (
@@ -27,7 +27,25 @@ echo [verify] flake8 clean
 
 echo.
 echo ============================================================
-echo  2/2  pytest
+echo  2/3  pyflakes ^(whole repo^)
+echo ============================================================
+REM The full ruleset runs on src and tests only, because desktop_app.py
+REM and scripts/ still carry cosmetic findings. The pyflakes subset is the
+REM bug half of flake8 (undefined names, unused imports, redefinitions)
+REM and the whole repo passes it, so gate on it everywhere. This is what
+REM would have caught the two handlers that raised NameError instead of
+REM showing the user an error.
+"%PY%" -m flake8 --select=F src tests scripts desktop_app.py
+if errorlevel 1 (
+    echo.
+    echo [verify] FAILED: pyflakes
+    exit /b 1
+)
+echo [verify] pyflakes clean
+
+echo.
+echo ============================================================
+echo  3/3  pytest
 echo ============================================================
 "%PY%" -m pytest --cov=src --cov-report=term-missing
 set PYTEST_RC=%ERRORLEVEL%

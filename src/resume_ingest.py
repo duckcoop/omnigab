@@ -151,7 +151,7 @@ def ingest_resume(*, force: bool = False, project_root: Path = PROJECT_ROOT,
                                 chars_written=target.stat().st_size)
 
     if verbose:
-        print(f"[ingest] extracting {src.name} → {target.name}")
+        print(f"[ingest] extracting {src.name} -> {target.name}")
 
     if src.suffix.lower() == ".pdf":
         text = _extract_pdf(src)

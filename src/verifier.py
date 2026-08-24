@@ -243,9 +243,9 @@ def _print_color_report(result: VerificationResult):
     C = Fore.CYAN
     W = Style.RESET_ALL
 
-    print(f"\n{C}{'─' * 50}{W}")
+    print(f"\n{C}{'-' * 50}{W}")
     print(f"  {C}VERIFICATION REPORT{W}")
-    print(f"{C}{'─' * 50}{W}")
+    print(f"{C}{'-' * 50}{W}")
 
     supported = sum(1 for c in result.claims if c.supported)
     unsupported = len(result.claims) - supported
@@ -273,16 +273,16 @@ def _print_color_report(result: VerificationResult):
     if result.removed_claims:
         print(f"\n  {R}Removed {len(result.removed_claims)} unsupported claim(s):{W}")
         for claim in result.removed_claims:
-            print(f"    {R}✗{W} {claim[:80]}")
+            print(f"    {R}x{W} {claim[:80]}")
 
-    print(f"{C}{'─' * 50}{W}")
+    print(f"{C}{'-' * 50}{W}")
 
 
 def _print_plain_report(result: VerificationResult):
     """Fallback plain text report when colorama is not installed."""
-    print(f"\n{'─' * 40}")
+    print(f"\n{'-' * 40}")
     print(f"  VERIFICATION REPORT")
-    print(f"{'─' * 40}")
+    print(f"{'-' * 40}")
     print(f"  Claims analyzed:    {len(result.claims)}")
     supported = sum(1 for c in result.claims if c.supported)
     print(f"  Supported:          {supported}")
@@ -301,7 +301,7 @@ def _print_plain_report(result: VerificationResult):
         for claim in result.removed_claims:
             print(f"    - {claim[:80]}")
 
-    print(f"{'─' * 40}")
+    print(f"{'-' * 40}")
 
 
 if __name__ == "__main__":

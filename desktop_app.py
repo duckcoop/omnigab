@@ -1039,8 +1039,8 @@ class RAGApp(tk.Tk):
                     text="No resume selected.", fg=FG_DIM))
                 self.after(0, self._refresh_resume_status)
             except Exception as exc:
-                self.after(0, lambda: self.resume_status_label.configure(
-                    text=f"Clear failed: {exc}", fg=RED))
+                self.after(0, lambda e=exc: self.resume_status_label.configure(
+                    text=f"Clear failed: {e}", fg=RED))
 
         threading.Thread(target=do_clear, daemon=True).start()
 
@@ -1282,7 +1282,8 @@ class RAGApp(tk.Tk):
                             text=f"Error: {m}", fg=RED))
                         self.after(0, lambda: self._show_progress(False))
             except Exception as e:
-                self.after(0, lambda: self.models_status.configure(text=str(e), fg=RED))
+                self.after(0, lambda err=e: self.models_status.configure(
+                    text=str(err), fg=RED))
                 self.after(0, lambda: self._show_progress(False))
 
         threading.Thread(target=do, daemon=True).start()

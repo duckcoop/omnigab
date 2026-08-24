@@ -36,7 +36,7 @@ def _migrate_legacy_db():
         try:
             DB_PATH.parent.mkdir(parents=True, exist_ok=True)
             LEGACY_DB_PATH.rename(DB_PATH)
-            print(f"[persistent_memory] migrated {LEGACY_DB_PATH.name} → {DB_PATH.name}")
+            print(f"[persistent_memory] migrated {LEGACY_DB_PATH.name} -> {DB_PATH.name}")
         except OSError as exc:
             print(f"[persistent_memory] could not migrate legacy DB: {exc}")
 

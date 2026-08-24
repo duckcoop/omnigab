@@ -878,7 +878,7 @@ class UsaJobsSearchTool:
         self._refresh_resume()
         resume_loaded = self._cached_resume_vector is not None
         if not resume_loaded:
-            _log(f"  [stage C] WARNING: no resume vector loaded — "
+            _log(f"  [stage C] WARNING: no resume vector loaded - "
                  f"match_percent will be null for every result. "
                  f"Drop a resume into data/docs/active_resume.* to enable scoring.")
         for job in keepers:

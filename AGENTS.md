@@ -161,13 +161,20 @@ pytest                       # unit only, no network, no model, no GPU
 pytest -m integration        # live network, opt in
 pytest -m model              # needs a real GGUF on disk (nothing yet)
 pytest --cov=src --cov-report=term-missing
-flake8 src tests
-verify.bat                   # flake8 + pytest + coverage, one exit code
+flake8 src tests             # full ruleset, src and tests
+flake8 --select=F src tests scripts desktop_app.py   # bugs, whole repo
+verify.bat                   # all three above, one exit code
 ```
 
 On Windows, prefix with `venv\Scripts\python.exe -m` if the venv is not
 active. `verify.bat` does that for you and is the gate to run before
 accepting any change; `verify.sh` is its Linux and macOS twin.
+
+The full ruleset covers `src` and `tests` only, because `desktop_app.py`
+and `scripts/` still carry cosmetic findings. The pyflakes subset
+(`--select=F`: undefined names, unused imports, redefinitions) is the
+half that catches real bugs, the whole repository passes it, and
+`verify.bat` gates on it everywhere. Keep it that way.
 
 Selection replaced the old per-subsystem argparse flags:
 `--python-eval` is `pytest -k python_eval`, `--all` is the default run

@@ -271,6 +271,86 @@ def optimal_context(filename: str, vram_gb: int) -> tuple[int, int]:
     return ctx, batch
 
 
+def detect_gpu_name() -> str:
+    """GPU model string from nvidia-smi, or empty if there is no GPU."""
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            stderr=subprocess.DEVNULL, timeout=5).decode().strip().splitlines()
+        return out[0].strip() if out else ""
+    except (FileNotFoundError, subprocess.SubprocessError, IndexError):
+        return ""
+
+
+# Held back from VRAM for compute buffers, the desktop, and anything else
+# using the card. Guessing this too low is what puts the KV cache in system
+# RAM, where generation drops from tens of tokens per second to low single
+# digits.
+VRAM_RESERVE_GB = 1.0
+
+# Ladder of context sizes to report. Stops at the window Qwen3.5 is trained
+# for; past that quality falls off even where the card could hold more.
+_CTX_LADDER = (262144, 131072, 65536, 32768, 16384, 8192, 4096, 2048)
+
+
+def max_context_for(weight_gb: float, vram_gb: float) -> int:
+    """Largest laddered context whose KV cache still fits beside the weights."""
+    free = vram_gb - weight_gb - VRAM_RESERVE_GB
+    if free <= 0:
+        return 0
+    tokens = int((free / KV_CACHE_GB_PER_1K) * 1024)
+    return next((step for step in _CTX_LADDER if tokens >= step), 0)
+
+
+def model_capability(vram_gb: float, ram_gb: float) -> list[dict]:
+    """How each catalog model would run on the given hardware.
+
+    A pure function of the two numbers so it can be tested without a GPU,
+    a model file, or a loaded generator. Verdicts:
+
+      gpu   weights and a usable KV cache fit in VRAM
+      cpu   too big for VRAM but fits in system RAM, so it runs slowly
+            rather than not at all
+      no    will not fit in RAM either
+    """
+    rows = []
+    for filename, meta in AVAILABLE_MODELS.items():
+        profile = MODEL_PROFILE.get(filename, _DEFAULT_PROFILE)
+        weight_gb = profile["weight_gb"]
+        ctx = max_context_for(weight_gb, vram_gb) if vram_gb else 0
+        if ctx:
+            verdict, note = "gpu", f"fits in VRAM, up to {ctx} tokens"
+        elif ram_gb and weight_gb + VRAM_RESERVE_GB <= ram_gb:
+            verdict, note = "cpu", "too big for VRAM, runs on CPU (slow)"
+        else:
+            verdict, note = "no", "not enough memory"
+        rows.append({
+            "filename": filename,
+            "name": meta.get("name", filename),
+            "weight_gb": weight_gb,
+            "max_context": ctx,
+            "verdict": verdict,
+            "note": note,
+        })
+    return rows
+
+
+def hardware_report() -> dict:
+    """Detected hardware plus what it can run. No model needs to be loaded."""
+    vram_gb = detect_vram_gb() if cuda_supported() else 0
+    ram_gb = detect_ram_gb()
+    return {
+        "gpu": detect_gpu_name(),
+        "vram_gb": vram_gb,
+        "ram_gb": ram_gb,
+        "cuda": cuda_supported(),
+        "reserve_gb": VRAM_RESERVE_GB,
+        "kv_gb_per_1k": KV_CACHE_GB_PER_1K,
+        "models": model_capability(vram_gb, ram_gb),
+    }
+
+
 class ModelManager:
     """Holds the single live Generator. Thread-safe swap."""
 

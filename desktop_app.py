@@ -1236,6 +1236,7 @@ class RAGApp(tk.Tk):
                 text=f"Loaded {friendly_name}", fg=GREEN))
             self.after(0, self._load_models)
             self.after(0, self._load_sysinfo)
+            self.after(0, self._load_hardware)
             # Refresh the topbar status badge — the tool-calling tier just
             # changed because the model did. Without this, the badge keeps
             # whatever stale value (often "broken (switch to 7B/14B)") it
@@ -1741,6 +1742,22 @@ class RAGApp(tk.Tk):
         self.sysinfo_text.tag_configure("amber", foreground=AMBER)
         self.sysinfo_text.tag_configure("cyan", foreground=CYAN)
 
+        # Hardware. Answers "what can this machine run", which is what
+        # people expect a benchmark button to tell them and what the old
+        # one never did: it only ever timed the model already loaded.
+        tk.Label(inner, text="# HARDWARE", fg=GREEN, bg=BG,
+                 font=("Consolas", 12, "bold"), anchor="w").pack(
+            fill="x", padx=16, pady=(16, 8))
+
+        self.hw_text = tk.Text(inner, bg=BG, fg=FG, font=FONT_SM, height=10,
+                               state="disabled", borderwidth=0,
+                               highlightthickness=0)
+        self.hw_text.pack(fill="x", padx=16)
+        for tag, colour in (("key", FG_DIM), ("val", FG_BRIGHT),
+                            ("green", GREEN), ("amber", AMBER),
+                            ("red", RED), ("cyan", CYAN)):
+            self.hw_text.tag_configure(tag, foreground=colour)
+
         # Benchmark
         tk.Label(inner, text="# BENCHMARK", fg=GREEN, bg=BG,
                  font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", padx=16, pady=(16, 8))
@@ -1750,12 +1767,13 @@ class RAGApp(tk.Tk):
         tk.Button(bench_f, text="RUN BENCHMARK", bg=BG, fg=GREEN, font=("Consolas", 10, "bold"),
                   command=self._run_benchmark, borderwidth=1, padx=10).pack(side="left")
 
-        self.bench_result = tk.Text(inner, bg=BG, fg=FG, font=FONT_SM, height=6,
+        self.bench_result = tk.Text(inner, bg=BG, fg=FG, font=FONT_SM, height=8,
                                      state="disabled", borderwidth=0, highlightthickness=0)
         self.bench_result.pack(fill="x", padx=16, pady=8)
         self.bench_result.tag_configure("key", foreground=FG_DIM)
         self.bench_result.tag_configure("val", foreground=FG_BRIGHT)
         self.bench_result.tag_configure("green", foreground=GREEN)
+        self.bench_result.tag_configure("amber", foreground=AMBER)
 
     def _load_sysinfo(self):
         def do():
@@ -1789,6 +1807,38 @@ class RAGApp(tk.Tk):
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 
+    def _load_hardware(self):
+        """Render the capability table. Needs no model loaded."""
+        def do():
+            r = api_get("/api/hardware")
+
+            def show():
+                w = self.hw_text
+                w.configure(state="normal")
+                w.delete("1.0", "end")
+                if r.get("error"):
+                    w.insert("end", f"  {r['error']}\n", "red")
+                    w.configure(state="disabled")
+                    return
+                gpu = r.get("gpu") or "none detected"
+                w.insert("end", f"  {'gpu':>14s} : ", "key")
+                w.insert("end", f"{gpu}\n", "green" if r.get("cuda") else "amber")
+                w.insert("end", f"  {'vram':>14s} : ", "key")
+                w.insert("end", f"{r.get('vram_gb', 0)} GB\n", "val")
+                w.insert("end", f"  {'system ram':>14s} : ", "key")
+                w.insert("end", f"{r.get('ram_gb', 0)} GB\n", "val")
+                w.insert("end", f"  {'kv cache':>14s} : ", "key")
+                w.insert("end", f"{r.get('kv_gb_per_1k', 0)} GB per 1024 tokens "
+                                f"(measured)\n", "cyan")
+                w.insert("end", "\n  models this machine can run:\n", "key")
+                for m in r.get("models", []):
+                    tag = {"gpu": "green", "cpu": "amber"}.get(m["verdict"], "red")
+                    w.insert("end", f"    {m['name']:<26} ", "val")
+                    w.insert("end", f"{m['note']}\n", tag)
+                w.configure(state="disabled")
+            self.after(0, show)
+        threading.Thread(target=do, daemon=True).start()
+
     def _run_benchmark(self):
         self.bench_result.configure(state="normal")
         self.bench_result.delete("1.0", "end")
@@ -1797,18 +1847,32 @@ class RAGApp(tk.Tk):
 
         def do():
             r = api_get("/api/benchmark")
+
             def show():
                 t = self.bench_result
                 t.configure(state="normal")
                 t.delete("1.0", "end")
                 if r.get("error"):
                     t.insert("end", f"  [error] {r['error']}", "val")
-                else:
-                    t.insert("end", f"  model   : ", "key"); t.insert("end", f"{r.get('model','?')}\n", "green")
-                    t.insert("end", f"  answer  : ", "key"); t.insert("end", f"{r.get('answer','?')}\n", "val")
-                    t.insert("end", f"  tokens  : ", "key"); t.insert("end", f"{r.get('tokens',0)}\n", "val")
-                    t.insert("end", f"  speed   : ", "key"); t.insert("end", f"{r.get('tps',0):.1f} tok/s\n", "green")
-                    t.insert("end", f"  elapsed : ", "key"); t.insert("end", f"{r.get('elapsed',0)}s\n", "val")
+                    t.configure(state="disabled")
+                    return
+                rows = [
+                    ("model", r.get("model", "?"), "green"),
+                    ("tokens", f"{r.get('tokens', 0)} of "
+                               f"{r.get('requested_tokens', 0)} requested", "val"),
+                    ("speed", f"{r.get('tps', 0):.1f} tok/s",
+                     "green" if r.get("complete") else "amber"),
+                    ("elapsed", f"{r.get('elapsed', 0)}s", "val"),
+                ]
+                for label, value, tag in rows:
+                    t.insert("end", f"  {label:>8s} : ", "key")
+                    t.insert("end", f"{value}\n", tag)
+                if not r.get("complete"):
+                    # A run that stopped early measured mostly fixed
+                    # overhead, so the speed above is not a throughput
+                    # figure. Say so rather than let it read as one.
+                    t.insert("end", "\n  short run, speed is not reliable\n",
+                             "amber")
                 t.configure(state="disabled")
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
@@ -1829,6 +1893,7 @@ class RAGApp(tk.Tk):
             API_TOKEN = r.get("api_token", "")
             self.after(0, self._load_status)
             self.after(0, self._load_sysinfo)
+            self.after(0, self._load_hardware)
             self.after(0, self._load_docs)
             self.after(0, self._load_models)
             self.after(0, self._load_memory)

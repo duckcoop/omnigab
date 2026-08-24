@@ -947,26 +947,58 @@ async def api_resume_clear():
     return JSONResponse({"status": "ok", "removed": removed})
 
 
+# Long enough to measure, short enough to stay well inside the desktop
+# client's 30 second timeout. At the ~56 tok/s this catalog manages on a
+# 4070 SUPER that is about 3.5 seconds.
+#
+# The prompt has to reliably fill the budget. The previous benchmark asked
+# "What is 2+2?" and got one token back, so the tok/s it reported was
+# fixed overhead rather than generation speed and swung 3x between
+# identical runs: 3.1 then 4.1 on a model that actually does 56.
+BENCHMARK_TOKENS = 200
+BENCHMARK_PROMPT = (
+    "Describe, step by step and in detail, what happens inside a computer "
+    "from the moment the power button is pressed until the login screen "
+    "appears."
+)
+
+
+@app.get("/api/hardware")
+def api_hardware():
+    """What this machine is and which catalog models it can run.
+
+    Needs no loaded model: every number comes from nvidia-smi, psutil, and
+    the measured per-model constants, so it answers "what could I run"
+    rather than "how fast is what I am running".
+    """
+    from core.model_manager import hardware_report
+    return JSONResponse(hardware_report())
+
+
 @app.get("/api/benchmark")
 async def api_benchmark(request: Request):
     if mm is None or mm.generator is None:
         return JSONResponse({"error": "No model loaded"}, status_code=503)
     import time as _time
+
+    gen = mm.generator
+    prompt = gen.format_messages([{"role": "user", "content": BENCHMARK_PROMPT}])
     t0 = _time.time()
     answer = await asyncio.to_thread(
-        mm.generator.generate,
-        "What is 2+2? Answer in one word.",
-        "Basic math: 2+2=4, 3+3=6.",
-        0.1,
-    )
+        gen.generate_raw, prompt, 0.1, BENCHMARK_TOKENS)
     elapsed = _time.time() - t0
-    stats = mm.generator.get_last_stats()
+    stats = gen.get_last_stats()
+    tokens = stats["tokens"]
     return JSONResponse({
-        "answer": answer,
-        "tokens": stats["tokens"],
+        "answer": (answer or "").strip()[:200],
+        "tokens": tokens,
         "tps": stats["tps"],
         "elapsed": round(elapsed, 2),
         "model": mm.current_model_name,
+        "requested_tokens": BENCHMARK_TOKENS,
+        # A run that stopped early measured less than it was asked to, so
+        # say so rather than let a thin sample pass as a throughput figure.
+        "complete": tokens >= BENCHMARK_TOKENS * 0.5,
     })
 
 

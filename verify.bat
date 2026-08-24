@@ -7,10 +7,23 @@ REM whatever the summary said.
 
 setlocal
 
+REM Double-clicking this from Explorer opens a console that closes the
+REM instant the script ends, so the result flashes past unread. So it
+REM pauses at the end by default.
+REM
+REM Detecting a double-click is not reliable: PowerShell and cmd both
+REM launch a .bat through "cmd /c <path>", so the command line looks the
+REM same either way. Rather than guess, pause unless told not to. CI sets
+REM the CI variable, and a script can pass --no-pause.
+set "HOLD=1"
+if defined CI set "HOLD="
+if /i "%~1"=="--no-pause" set "HOLD="
+
 set PY=venv\Scripts\python.exe
 if not exist "%PY%" (
     echo [verify] venv\Scripts\python.exe not found. Run setup.bat first.
-    exit /b 2
+    set RC=2
+    goto :done
 )
 
 echo.
@@ -21,7 +34,8 @@ echo ============================================================
 if errorlevel 1 (
     echo.
     echo [verify] FAILED: flake8
-    exit /b 1
+    set RC=1
+    goto :done
 )
 echo [verify] flake8 clean
 
@@ -39,7 +53,8 @@ REM showing the user an error.
 if errorlevel 1 (
     echo.
     echo [verify] FAILED: pyflakes
-    exit /b 1
+    set RC=1
+    goto :done
 )
 echo [verify] pyflakes clean
 
@@ -56,11 +71,26 @@ REM suite is real, "collected nothing" means collection broke.
 if not "%PYTEST_RC%"=="0" (
     echo.
     echo [verify] FAILED: pytest ^(exit %PYTEST_RC%^)
-    exit /b 1
+    set RC=1
+    goto :done
 )
 
 echo.
 echo ============================================================
 echo  ALL GREEN
 echo ============================================================
-exit /b 0
+set RC=0
+
+:done
+REM One exit, so the pause covers every path. A gate whose failure message
+REM scrolls away unread is not a gate.
+if defined HOLD (
+    echo.
+    if "%RC%"=="0" (
+        echo [verify] Passed. Press any key to close.
+    ) else (
+        echo [verify] FAILED with exit code %RC%. Press any key to close.
+    )
+    pause >nul
+)
+exit /b %RC%

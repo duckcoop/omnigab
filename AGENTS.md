@@ -164,6 +164,7 @@ pytest --cov=src --cov-report=term-missing
 flake8 src tests             # full ruleset, src and tests
 flake8 --select=F src tests scripts desktop_app.py   # bugs, whole repo
 verify.bat                   # all three above, one exit code
+verify.bat --no-pause        # same, for scripts (CI=1 does this too)
 ```
 
 On Windows, prefix with `venv\Scripts\python.exe -m` if the venv is not

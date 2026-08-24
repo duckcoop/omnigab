@@ -124,7 +124,7 @@ If you have extra RAM and want better quality answers, you can swap in a bigger 
 |---|---|---|---|
 | Qwen3.5-9B (best quality) | `Qwen_Qwen3.5-9B-Q4_K_M.gguf` | ~6.2 GB | [Download](https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF) |
 
-The easier route is the **Models tab in the app**, which downloads and switches for you and is the only place that records your choice.
+The easier route is the **Models tab in the app**, which downloads and switches for you and is the only place that records your choice. That tab also takes any Hugging Face GGUF repo: paste the URL from your browser into **Add from Hugging Face**, pick a quant, and it downloads and profiles it against your hardware. See the README for the walkthrough.
 
 You do not need to edit `src/config.py`. The app reads which model to use from `data/model_state.json`, written when you pick one in the Models tab, and falls back to whatever it finds in `models/` if that file is missing. Editing `GGUF_MODEL_PATH` by hand is not how the setting is read.
 

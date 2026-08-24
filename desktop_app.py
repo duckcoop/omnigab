@@ -18,6 +18,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import urllib.request
 import urllib.error
+import webbrowser
+
+from core.model_catalog import HUGGINGFACE_BROWSE_URL
 
 # ============ CONFIG ============
 PORT = 8080
@@ -1143,6 +1146,53 @@ class RAGApp(tk.Tk):
                                  font=FONT_XS, anchor="w")
         self.dl_label.pack(side="left", padx=8)
 
+        # --- add from Hugging Face -------------------------------------
+        # The catalog used to be a fixed list, so the only models the app
+        # could run were the ones written into config.py. Anything on the
+        # Hub in GGUF form works; what it needed was a way to say which.
+        add_box = tk.Frame(frame, bg=BG2, highlightbackground=BORDER,
+                           highlightthickness=1)
+        add_box.pack(fill="x", padx=16, pady=(8, 4))
+
+        tk.Label(add_box, text="ADD FROM HUGGING FACE", fg=GREEN, bg=BG2,
+                 font=("Consolas", 10, "bold"), anchor="w").pack(
+            fill="x", padx=12, pady=(10, 2))
+        tk.Label(add_box,
+                 text=("Browse huggingface.co for a model in GGUF format, "
+                       "copy the address from your browser, and paste it "
+                       "below. Quantized files ending Q4_K_M are the usual "
+                       "balance of size and quality."),
+                 fg=FG_DIM, bg=BG2, font=FONT_XS, anchor="w",
+                 wraplength=820, justify="left").pack(fill="x", padx=12)
+
+        link = tk.Label(add_box, text=HUGGINGFACE_BROWSE_URL, fg=CYAN, bg=BG2,
+                        font=FONT_XS, anchor="w", cursor="hand2")
+        link.pack(fill="x", padx=12, pady=(4, 0))
+        link.bind("<Button-1>",
+                  lambda e: webbrowser.open(HUGGINGFACE_BROWSE_URL))
+
+        row = tk.Frame(add_box, bg=BG2)
+        row.pack(fill="x", padx=12, pady=(6, 10))
+        self.hf_entry = tk.Entry(row, bg=BG, fg=FG_BRIGHT, font=FONT,
+                                 insertbackground=GREEN, borderwidth=0,
+                                 highlightthickness=1,
+                                 highlightbackground=BORDER,
+                                 highlightcolor=GREEN)
+        self.hf_entry.pack(side="left", fill="x", expand=True, ipady=5)
+        self.hf_entry.bind("<Return>", lambda e: self._browse_hf_repo())
+        tk.Button(row, text="BROWSE", bg=BG2, fg=GREEN,
+                  font=("Consolas", 9, "bold"), borderwidth=1, padx=10,
+                  command=self._browse_hf_repo).pack(side="left", padx=(8, 0))
+
+        self.hf_status = tk.Label(add_box, text="", fg=FG_DIM, bg=BG2,
+                                  font=FONT_XS, anchor="w", wraplength=820,
+                                  justify="left")
+        self.hf_status.pack(fill="x", padx=12, pady=(0, 8))
+
+        # Results of a browse: one row per quant, each with its size.
+        self.hf_results = tk.Frame(add_box, bg=BG2)
+        self.hf_results.pack(fill="x", padx=12, pady=(0, 10))
+
         # Scrollable container for per-model rows.
         outer = tk.Frame(frame, bg=BG)
         outer.pack(fill="both", expand=True, padx=16, pady=4)
@@ -1220,6 +1270,78 @@ class RAGApp(tk.Tk):
                           borderwidth=1, padx=10,
                           command=lambda f=m["filename"], i=m: self._download_model(f, i)
                           ).pack(side="left", padx=(0, 6))
+
+    def _browse_hf_repo(self):
+        """Ask the backend what quants a pasted repo offers."""
+        ref = self.hf_entry.get().strip()
+        if not ref:
+            self.hf_status.configure(text="Paste a model URL first.", fg=AMBER)
+            return
+        for child in self.hf_results.winfo_children():
+            child.destroy()
+        self.hf_status.configure(text="Looking up the repo...", fg=FG_DIM)
+
+        def do():
+            r = api_post("/api/models/browse", {"ref": ref})
+
+            def show():
+                if r.get("error"):
+                    self.hf_status.configure(text=r["error"], fg=RED)
+                    return
+                files = r.get("files", [])
+                self.hf_status.configure(
+                    text=(f"{r.get('repo')}  ({r.get('license', 'unknown')} "
+                          f"license)  {len(files)} file(s)"),
+                    fg=GREEN)
+                # Largest first: the better quants are the bigger ones, and
+                # they are what someone with room should be choosing.
+                for f in sorted(files, key=lambda x: -x.get("size_gb", 0))[:14]:
+                    self._render_hf_file(r["repo"], f)
+            self.after(0, show)
+        threading.Thread(target=do, daemon=True).start()
+
+    def _render_hf_file(self, repo, f):
+        row = tk.Frame(self.hf_results, bg=BG2)
+        row.pack(fill="x", pady=1)
+        label = f"{f['size_gb']:>6.2f} GB   {f['filename']}"
+        tk.Label(row, text=label, fg=FG, bg=BG2, font=FONT_XS,
+                 anchor="w").pack(side="left", fill="x", expand=True)
+        if f.get("downloadable"):
+            tk.Button(row, text="DOWNLOAD", bg=BG2, fg=GREEN,
+                      font=("Consolas", 8, "bold"), borderwidth=1, padx=6,
+                      command=lambda: self._add_hf_model(repo, f["filename"])
+                      ).pack(side="right")
+        else:
+            # A split quant needs every part; hf_hub_download fetches one
+            # file by name, so say why rather than offering a button that
+            # cannot work.
+            tk.Label(row, text="split, not supported", fg=AMBER, bg=BG2,
+                     font=FONT_XS).pack(side="right")
+
+    def _add_hf_model(self, repo, filename):
+        self.hf_status.configure(
+            text=f"Downloading {filename}. This can take several minutes.",
+            fg=AMBER)
+
+        def do():
+            r = api_post("/api/models/add", {"repo": repo, "filename": filename})
+
+            def show():
+                if r.get("error"):
+                    self.hf_status.configure(text=r["error"], fg=RED)
+                    return
+                profile = (r.get("entry") or {}).get("profile", {})
+                self.hf_status.configure(
+                    text=(f"Added {filename}: {profile.get('architecture', '?')}, "
+                          f"{profile.get('weight_gb', '?')} GB, trained context "
+                          f"{profile.get('trained_context', '?')}."),
+                    fg=GREEN)
+                # The new model changes both lists, and the hardware panel
+                # can now say whether it fits.
+                self._load_models()
+                self._load_hardware()
+            self.after(0, show)
+        threading.Thread(target=do, daemon=True).start()
 
     def _switch_model(self, filename, friendly_name):
         if not messagebox.askyesno("Switch model",

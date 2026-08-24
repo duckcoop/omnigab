@@ -133,6 +133,19 @@ Both sizes are measured, not estimated: those are the actual file sizes on disk.
 
 Both read `tools: ready` in the topbar, and both earned it the same way: run through the real agent loop, each picked the right tool and filled its arguments correctly on 4 of 4 simple calls and 5 of 6 large-schema calls, with no tool called on a plain greeting. They scored identically, so the 4B is not labelled weaker. Sizes below 4B are not offered, because a model that cannot call a tool reliably cannot do most of what this app is for.
 
+### Adding any other model
+
+Those two are the curated defaults, not the limit. Anything on Hugging Face in GGUF format works, including other families: the bundled llama.cpp understands Gemma, Llama, Mistral, GLM, Phi, Granite, OLMo, SmolLM and gpt-oss as well as Qwen.
+
+1. Browse [huggingface.co GGUF models](https://huggingface.co/models?library=gguf&sort=trending). Repos from `bartowski`, `unsloth`, and `lmstudio-community` are reliable requants of official weights.
+2. Copy the address from your browser. The plain URL, a `/tree/main` link, or a bare `org/repo` id all work.
+3. Paste it into **Models -> Add from Hugging Face** and press BROWSE.
+4. Pick a quant. `Q4_K_M` is the usual balance of size against quality; the list shows every file with its real size so you can match one to your card.
+
+The app then reads the model's own metadata and tells you whether it fits: weights come from the file size, and cache cost from the model's attention geometry, so the HARDWARE panel gives a correct "fits in VRAM, up to N tokens" verdict for a model it has never seen before.
+
+Two limits worth knowing. Split quants (`-00001-of-00003.gguf`) need every part and are listed but not downloadable. And a model larger than your VRAM will load, but the part that does not fit runs on the CPU, which is dramatically slower rather than slightly.
+
 ### Context window
 
 Settings → Advanced controls how much the model can hold at once. Auto sizes it to fit your GPU, and the panel shows both what is currently loaded and what your card could handle.

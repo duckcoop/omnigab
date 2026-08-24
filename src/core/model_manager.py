@@ -183,10 +183,15 @@ def ensure_model_downloaded(filename: str, *, progress: bool = True) -> bool:
     """Download `filename` from Hugging Face if it's not already on disk.
 
     Returns True if the file is present after this call. Uses the repo
-    configured in AVAILABLE_MODELS. Safe to call on every startup — it
+    from the merged catalog, so a model the user added from Hugging
+    Face downloads the same way a built-in one does. Safe to call on
+    every startup: it
     is a no-op when the file already exists.
     """
-    if filename not in AVAILABLE_MODELS:
+    from core.model_catalog import all_models
+
+    catalog = all_models()
+    if filename not in catalog:
         return False
     target = MODELS_DIR / filename
     if target.exists():
@@ -198,7 +203,7 @@ def ensure_model_downloaded(filename: str, *, progress: bool = True) -> bool:
         print("[omnigab] huggingface-hub not installed; cannot auto-download.")
         return False
 
-    repo = AVAILABLE_MODELS[filename]["repo"]
+    repo = catalog[filename].get("repo", "")
     if progress:
         size = AVAILABLE_MODELS[filename]["size"]
         print(f"[omnigab] Downloading {filename} ({size}) from {repo}...")
@@ -294,12 +299,27 @@ VRAM_RESERVE_GB = 1.0
 _CTX_LADDER = (262144, 131072, 65536, 32768, 16384, 8192, 4096, 2048)
 
 
-def max_context_for(weight_gb: float, vram_gb: float) -> int:
-    """Largest laddered context whose KV cache still fits beside the weights."""
+def max_context_for(weight_gb: float, vram_gb: float,
+                    kv_per_1k: float | None = None,
+                    trained_context: int = 0) -> int:
+    """Largest laddered context whose KV cache still fits beside the weights.
+
+    `kv_per_1k` defaults to the value measured on the curated Qwen3.5
+    models. A model added from Hugging Face carries its own, derived from
+    its attention geometry, because a 48-layer model does not cost what a
+    33-layer one does and assuming otherwise is how the answer silently
+    becomes wrong for everything the catalog did not ship with.
+
+    `trained_context` caps the result where it is known: holding more in
+    VRAM than the model was trained for buys nothing but degradation.
+    """
     free = vram_gb - weight_gb - VRAM_RESERVE_GB
     if free <= 0:
         return 0
-    tokens = int((free / KV_CACHE_GB_PER_1K) * 1024)
+    cost = kv_per_1k or KV_CACHE_GB_PER_1K
+    tokens = int((free / cost) * 1024)
+    if trained_context:
+        tokens = min(tokens, trained_context)
     return next((step for step in _CTX_LADDER if tokens >= step), 0)
 
 
@@ -314,11 +334,22 @@ def model_capability(vram_gb: float, ram_gb: float) -> list[dict]:
             rather than not at all
       no    will not fit in RAM either
     """
+    from core.model_catalog import all_models
+
     rows = []
-    for filename, meta in AVAILABLE_MODELS.items():
-        profile = MODEL_PROFILE.get(filename, _DEFAULT_PROFILE)
-        weight_gb = profile["weight_gb"]
-        ctx = max_context_for(weight_gb, vram_gb) if vram_gb else 0
+    for filename, meta in all_models().items():
+        # A curated model has a hand-checked profile. A model the user
+        # added carries one read from its own GGUF metadata. Either beats
+        # the default, which is only reached for a curated entry whose
+        # profile was never filled in.
+        gguf = meta.get("profile") or {}
+        profile = MODEL_PROFILE.get(filename) or _DEFAULT_PROFILE
+        weight_gb = gguf.get("weight_gb") or profile["weight_gb"]
+        ctx = max_context_for(
+            weight_gb, vram_gb,
+            kv_per_1k=gguf.get("kv_gb_per_1k") or None,
+            trained_context=gguf.get("trained_context", 0),
+        ) if vram_gb else 0
         if ctx:
             verdict, note = "gpu", f"fits in VRAM, up to {ctx} tokens"
         elif ram_gb and weight_gb + VRAM_RESERVE_GB <= ram_gb:
@@ -332,6 +363,8 @@ def model_capability(vram_gb: float, ram_gb: float) -> list[dict]:
             "max_context": ctx,
             "verdict": verdict,
             "note": note,
+            "source": meta.get("source", "built-in"),
+            "downloaded": (MODELS_DIR / filename).exists(),
         })
     return rows
 

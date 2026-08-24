@@ -963,6 +963,76 @@ BENCHMARK_PROMPT = (
 )
 
 
+@app.post("/api/models/browse")
+async def api_models_browse(request: Request):
+    """List the quants a Hugging Face repo offers.
+
+    Takes whatever the user pasted: the URL from the address bar, a
+    /tree/main link, or a bare org/repo id.
+    """
+    from core.model_catalog import list_repo_ggufs, parse_model_ref
+
+    body = await request.json()
+    try:
+        repo_id = parse_model_ref(body.get("ref", ""))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    try:
+        files, license_name = await asyncio.to_thread(list_repo_ggufs, repo_id)
+    except Exception as exc:
+        # A typo in a repo name is the common case here, and it arrives as
+        # a library exception rather than anything structured, so say which
+        # repo failed rather than surfacing the raw error alone.
+        return JSONResponse(
+            {"error": f"Could not read {repo_id} from Hugging Face: {exc}"},
+            status_code=404)
+
+    if not files:
+        return JSONResponse(
+            {"error": f"{repo_id} has no GGUF files. This app runs GGUF "
+                      f"quants; a repo of safetensors will not work."},
+            status_code=400)
+    return JSONResponse({"repo": repo_id, "license": license_name,
+                         "files": files})
+
+
+@app.post("/api/models/add")
+async def api_models_add(request: Request):
+    """Download one quant and register it, profiled from its own metadata."""
+    from core.model_catalog import add_model_from_repo
+
+    body = await request.json()
+    repo_id = (body.get("repo") or "").strip()
+    filename = (body.get("filename") or "").strip()
+    if not repo_id or not filename:
+        return JSONResponse({"error": "repo and filename are required"},
+                            status_code=400)
+    try:
+        entry = await asyncio.to_thread(add_model_from_repo, repo_id, filename)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"error": f"Download failed: {exc}"},
+                            status_code=500)
+    audit_log("model.add", status="ok", input_summary=filename,
+              detail={"repo": repo_id})
+    return JSONResponse({"status": "ok", "filename": filename, "entry": entry})
+
+
+@app.post("/api/models/forget")
+async def api_models_forget(request: Request):
+    """Remove a user-added model from the catalog, leaving the file alone."""
+    from core.model_catalog import forget_user_model
+
+    body = await request.json()
+    filename = (body.get("filename") or "").strip()
+    if not forget_user_model(filename):
+        return JSONResponse({"error": f"{filename} is not a user-added model"},
+                            status_code=400)
+    return JSONResponse({"status": "ok"})
+
+
 @app.get("/api/hardware")
 def api_hardware():
     """What this machine is and which catalog models it can run.

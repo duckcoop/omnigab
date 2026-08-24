@@ -95,7 +95,8 @@ omnigab/
 ├── .flake8                      max-line-length 120, E501 ignored
 │
 ├── src/
-│   ├── config.py                paths, model catalog, retrieval knobs
+│   ├── config.py                paths, curated model catalog, knobs
+│   ├── core/model_catalog.py    hugging face browse, download, profiling
 │   ├── core/
 │   │   ├── agent.py             THE tool-calling loop + system prompt
 │   │   ├── model_manager.py     GGUF load, hot swap, VRAM autotune
@@ -248,15 +249,23 @@ Do not report success while any check fails. Say what failed.
 
 ---
 
-## 8. Shipping the PR
+## 8. Shipping
 
-Every task in `docs/prompts/` is one pull request against
-`https://github.com/duckcoop/omnigab`. When the definition of done in
-section 7 is satisfied, ship it yourself rather than leaving it on a
-local branch.
+Work lands on `main` directly. No branch, no pull request per task.
 
-**Branch naming.** `pr<N>-<kebab-title>`, matching the plan. For
-example `pr0a-get-flake8-to-zero`, `pr1-migrate-to-pytest`.
+This replaced a PR-per-task flow. The reason for the change is worth
+recording, because the old rule was not wrong in principle: on a solo
+repository the pull request was reviewed by the same person who asked for
+the work, so it added a step without adding a reader. It also produced a
+seven-deep stack of dependent PRs, one of which was closed rather than
+merged, after which five more reported "merged" while `main` had moved not
+at all. A branch that nobody else is reading is bookkeeping.
+
+**The gate replaces the review.** Nothing is pushed until `verify.bat`
+exits 0: flake8 on `src tests`, pyflakes across the whole repository, and
+the full test suite. That gate is now the thing standing between a mistake
+and `main`, so treat a red run as a hard stop rather than something to
+explain in the summary.
 
 **Never commit files you did not create.** If the working tree holds
 untracked files that are not yours, stage your own paths explicitly.
@@ -265,50 +274,25 @@ Never `git add -A` or `git add .`.
 **Then:**
 
 ```bash
-git push -u origin <branch>
-gh pr create --base main --title "<same as the commit subject>" --body-file <path>
+verify.bat --no-pause
+git add <your paths>
+git commit
+git push
 ```
 
-Write the body to a temporary file rather than passing it inline, so
-formatting survives. If `gh` is not installed or not authenticated, stop
-after the push, print the compare URL, and say so.
+**The commit message is the report.** With no PR body, the commit is the
+only place the reasoning survives, so it carries what the PR description
+used to: what changed and why, the decisions that had a rejected
+alternative and what that alternative was, the verification actually run
+with real numbers rather than what should happen, and what was
+deliberately not done. Write it for someone reading `git log` in six
+months who cannot ask a question.
 
-**The PR body is your report, not a summary of the diff.** The diff is
-already visible. Use these headings:
+The diff shows what changed. The message exists to say why, because the
+diff will still be readable in a year and the reasoning will not.
 
-```markdown
-## What
-One paragraph. What changed and why this PR exists.
-
-## Why these choices
-The decisions that had a rejected alternative. Name the alternative.
-
-## Verification actually run
-Commands you ran and their real output. Not what should happen.
-Paste the numbers: test counts, coverage, timings, exit codes.
-
-## What I did not do
-Non-goals you honored, findings you wrote into docs/TODOS.md instead
-of fixing, and anything you could not complete.
-
-## Open questions
-Anything you are unsure about, stated plainly.
-```
-
-This is the same content the task prompt's REPORT block asks for, so
-write it once and use it for both.
-
-Two reasons it matters more than usual here. A reviewer reads the body
-before the diff, and on a solo repository the body is the only review
-artifact that exists. And the "why these choices" section is the part
-that is worth anything six months from now, because the diff will still
-be readable and the reasoning will not.
-
-**Do not merge.** Open the PR and stop. Cooper merges.
-
----
-
----
+**Do not rewrite published history.** Once something is pushed it stays.
+Fix a mistake with another commit that explains itself.
 
 ## 9. How to work
 

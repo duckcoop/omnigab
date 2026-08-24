@@ -124,6 +124,7 @@ packages = [
 py-modules = [
     "config",
     "demo_ui",
+    "desktop_ui",
     "embeddings",
     "generator",
     "ingest",

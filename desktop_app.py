@@ -18,63 +18,24 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import urllib.request
 import urllib.error
-import webbrowser
 
 from core.model_catalog import HUGGINGFACE_BROWSE_URL
+
+# The design tokens and the shared components both live in desktop_ui, so
+# there is one place a colour, a font, or a card border is decided. The
+# names below are re-exported here unchanged, which is why nothing in the
+# chat panel had to move when the other four panels were rebuilt.
+import desktop_ui as ui
+from desktop_ui import (
+    AMBER, BG, BG2, BLUE, BORDER, CONTENT_MAX_W, CYAN, FG, FG_BRIGHT,
+    FG_DIM, FONT, FONT_ASCII, FONT_MONO_XS, FONT_SM, FONT_TITLE, FONT_XS,
+    GREEN, GREEN_DIM, MONO, RED, SANS, USER_BUBBLE_FG,
+)
 
 # ============ CONFIG ============
 PORT = 8080
 API = f"http://127.0.0.1:{PORT}"
 API_TOKEN = ""
-BG = "#1f1f1c"
-BG2 = "#262522"
-BG3 = "#30302b"
-FG = "#d8d4c9"
-FG_DIM = "#8f8a80"
-FG_BRIGHT = "#f4f0e6"
-# --- Unified green palette (replaces the old orange brand color) ---
-# All accents, borders, button highlights, status pills, and active-tab
-# indicators read from these. The naming is preserved (GREEN/AMBER) so
-# existing code keeps working — only the hex values have shifted hue.
-GREEN = "#7ec890"          # primary accent  (was #d97757 orange)
-GREEN_DEEP = "#4ea36b"     # hover / active state for primary buttons
-GREEN_DIM = "#3a5a48"      # subtle borders and dividers tinted green
-AMBER = "#a8c879"          # secondary / warning (was orange-yellow)
-RED = "#e06c62"
-CYAN = "#9ab7a5"           # already greenish — kept
-BLUE = "#a9b7d0"
-BORDER = "#324035"         # slightly green-tinted border (was #3a3833)
-
-# User-message bubble — distinct dark-green block so the user's turn is
-# visually separated from the assistant's turn.
-USER_BUBBLE_BG = "#1c3a2e"
-USER_BUBBLE_BG_DARK = "#162d24"
-USER_BUBBLE_FG = "#e6f0e2"
-# Two families, on purpose. Chrome (labels, prefixes, status, headings) is
-# monospace, which is where the terminal identity lives. Body prose stays
-# proportional, because a long answer set in monospace is genuinely harder
-# to read and the aesthetic is not worth costing the user that.
-#
-# Georgia used to supply FONT_TITLE and the empty-state heading. A serif
-# belongs to neither half and read as an accident rather than a choice.
-MONO = "Consolas"
-SANS = "Segoe UI"
-
-FONT = (SANS, 11)
-FONT_SM = (SANS, 10)
-FONT_XS = (SANS, 9)
-FONT_LG = (SANS, 13)
-FONT_TITLE = (MONO, 14, "bold")
-FONT_ASCII = (MONO, 22)
-FONT_MONO_SM = (MONO, 10)
-FONT_MONO_XS = (MONO, 9)
-
-# The transcript is capped at a readable measure instead of stretching to
-# the window. On a 2560px monitor a full-width line is roughly 300
-# characters, which is unreadable; 820px lands near the 70-90 characters
-# that prose is comfortable at.
-CONTENT_MAX_W = 820
-COMPOSER_MAX_W = 820
 
 
 def api_get(path):
@@ -170,28 +131,11 @@ class RAGApp(tk.Tk):
         # Thin, dark, no arrow buttons. The classic tk.Scrollbar that
         # ScrolledText creates ignores colour options on Windows and renders
         # as a light native widget against the dark panel; a ttk scrollbar
-        # under clam does not.
-        self.style.element_create("Chat.Vertical.Scrollbar.trough", "from", "clam")
-        self.style.element_create("Chat.Vertical.Scrollbar.thumb", "from", "clam")
-        self.style.layout("Chat.Vertical.TScrollbar", [
-            ("Chat.Vertical.Scrollbar.trough", {
-                "sticky": "ns",
-                "children": [
-                    ("Chat.Vertical.Scrollbar.thumb",
-                     {"expand": "1", "sticky": "nswe"}),
-                ],
-            }),
-        ])
-        self.style.configure(
-            "Chat.Vertical.TScrollbar",
-            background=BG3, troughcolor=BG, bordercolor=BG,
-            lightcolor=BG3, darkcolor=BG3, arrowcolor=FG_DIM,
-            borderwidth=0, relief="flat", width=10,
-        )
-        self.style.map(
-            "Chat.Vertical.TScrollbar",
-            background=[("active", GREEN_DIM), ("pressed", GREEN_DIM)],
-        )
+        # under clam does not. Chat defined this style itself and named it
+        # Chat.Vertical.TScrollbar; it now comes from desktop_ui under a
+        # neutral name, because every scrolling panel needs the same one and
+        # a second copy of it is a second thing to keep in step.
+        ui.install_styles(self.style)
         self._configure_styles()
 
         # Build UI
@@ -220,28 +164,12 @@ class RAGApp(tk.Tk):
         s.configure("ActiveTab.TButton", background=BG, foreground=GREEN, font=FONT_SM,
                      borderwidth=0, padding=(12, 6))
 
-        # Panels
+        # Panels. Only the frame style survives here: the seven ttk label
+        # styles and the two ttk button styles that used to sit below were
+        # defined and never referenced by a single widget, because every
+        # panel reached for a raw tk widget with inline colours instead.
+        # desktop_ui.button and the tone vocabulary replace them.
         s.configure("Panel.TFrame", background=BG)
-        s.configure("Section.TLabel", background=BG, foreground=GREEN, font=("Consolas", 12, "bold"))
-        s.configure("Dim.TLabel", background=BG, foreground=FG_DIM, font=FONT_SM)
-        s.configure("Bright.TLabel", background=BG, foreground=FG_BRIGHT, font=FONT)
-        s.configure("Green.TLabel", background=BG, foreground=GREEN, font=FONT)
-        s.configure("Amber.TLabel", background=BG, foreground=AMBER, font=FONT)
-        s.configure("Cyan.TLabel", background=BG, foreground=CYAN, font=FONT)
-        s.configure("Red.TLabel", background=BG, foreground=RED, font=FONT)
-
-        # Buttons
-        s.configure("Action.TButton", background=BG, foreground=GREEN,
-                     font=FONT_SM, borderwidth=1, padding=(10, 4))
-        s.map("Action.TButton",
-               background=[("active", GREEN)],
-               foreground=[("active", BG)])
-
-        s.configure("Danger.TButton", background=BG, foreground=RED,
-                     font=FONT_SM, borderwidth=1, padding=(10, 4))
-        s.map("Danger.TButton",
-               background=[("active", RED)],
-               foreground=[("active", BG)])
 
     def _build_topbar(self):
         """Identity on the left, live status on the right.
@@ -329,6 +257,13 @@ class RAGApp(tk.Tk):
             indicator.configure(bg=GREEN if tab_name == name else BG2)
         if name == "chat":
             self.chat_input.focus_set()
+        else:
+            # A panel that was hidden while its content changed has a stale
+            # scroll region, which shows up as a scrollbar sized for the
+            # wrong height until the next resize.
+            panel = self.panels.get(name)
+            if isinstance(panel, ui.Page):
+                panel.refresh()
 
     def _build_panels(self):
         self.panels = {}
@@ -376,7 +311,7 @@ class RAGApp(tk.Tk):
             cursor="arrow", state="disabled",
         )
         self.chat_scroll = ttk.Scrollbar(
-            transcript, orient="vertical", style="Chat.Vertical.TScrollbar",
+            transcript, orient="vertical", style=ui.SCROLLBAR_STYLE,
             command=self.chat_output.yview,
         )
         self.chat_output.configure(yscrollcommand=self.chat_scroll.set)
@@ -990,14 +925,14 @@ class RAGApp(tk.Tk):
             with open(path, "rb") as f:
                 data = f.read()
         except OSError as exc:
-            self.resume_status_label.configure(text=f"Read failed: {exc}", fg=RED)
+            self.resume_status_label.error(f"Read failed: {exc}")
             return
 
         if len(data) > 5 * 1024 * 1024:
-            self.resume_status_label.configure(text="File too large (5 MB max).", fg=RED)
+            self.resume_status_label.error("File too large (5 MB max).")
             return
 
-        self.resume_status_label.configure(text="Uploading...", fg=AMBER)
+        self.resume_status_label.busy("Uploading...")
 
         def do_upload():
             import os
@@ -1010,15 +945,15 @@ class RAGApp(tk.Tk):
                 msg = f"Loaded: {r.get('original_filename', filename)} ({r.get('size', len(data))} bytes)"
                 drafter = r.get("drafter_baseresume") or {}
                 if drafter.get("updated"):
-                    msg += f"  •  drafter base updated ({drafter.get('chars', 0)} chars)"
+                    msg += f"  |  drafter base updated ({drafter.get('chars', 0)} chars)"
                 elif drafter.get("error"):
                     # Upload succeeded but extract failed (e.g. image-only PDF).
-                    msg += f"  •  drafter extract failed: {drafter['error']}"
-                self.after(0, lambda: self.resume_status_label.configure(text=msg, fg=GREEN))
+                    msg += f"  |  drafter extract failed: {drafter['error']}"
+                self.after(0, lambda: self.resume_status_label.ok(msg))
                 self.after(0, self._refresh_resume_status)
             else:
                 err = r.get("error", "Upload failed")
-                self.after(0, lambda: self.resume_status_label.configure(text=f"Failed: {err}", fg=RED))
+                self.after(0, lambda: self.resume_status_label.error(f"Failed: {err}"))
 
         threading.Thread(target=do_upload, daemon=True).start()
 
@@ -1038,28 +973,29 @@ class RAGApp(tk.Tk):
                 )
                 with urllib.request.urlopen(req, timeout=10) as resp:
                     json.loads(resp.read().decode())
-                self.after(0, lambda: self.resume_status_label.configure(
-                    text="No resume selected.", fg=FG_DIM))
+                self.after(0, lambda: self.resume_status_label.info(
+                    "No resume selected."))
                 self.after(0, self._refresh_resume_status)
             except Exception as exc:
-                self.after(0, lambda e=exc: self.resume_status_label.configure(
-                    text=f"Clear failed: {e}", fg=RED))
+                self.after(0, lambda e=exc: self.resume_status_label.error(
+                    f"Clear failed: {e}"))
 
         threading.Thread(target=do_clear, daemon=True).start()
 
     def _refresh_resume_status(self):
-        """Update the Jobs-tab label AND the topbar resume indicator."""
+        """Update the Settings card AND the topbar resume indicator."""
         def do():
             r = api_get("/api/resume")
+
             def show():
                 if r.get("active"):
                     name = r.get("filename", "active")
                     size_kb = max(1, r.get("size", 0) // 1024)
-                    self.resume_status_label.configure(
-                        text=f"Active resume: {name} ({size_kb} KB)", fg=GREEN)
+                    self.resume_status_label.ok(
+                        f"Active resume: {name} ({size_kb} KB)")
                     self.status_resume.configure(text=f"resume: {name}", foreground=GREEN)
                 else:
-                    self.resume_status_label.configure(text="No resume selected.", fg=FG_DIM)
+                    self.resume_status_label.info("No resume selected.")
                     self.status_resume.configure(text="resume: none", foreground=FG_DIM)
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
@@ -1067,151 +1003,162 @@ class RAGApp(tk.Tk):
 
     # ========== DOCS PANEL ==========
     def _build_docs_panel(self):
-        frame = ttk.Frame(self, style="Panel.TFrame")
-        self.panels["docs"] = frame
+        """What is indexed, and the files behind it.
 
-        top = tk.Frame(frame, bg=BG)
-        top.pack(fill="x", padx=16, pady=12)
+        The old version put the file list in a bare Text with no scrollbar,
+        so a folder holding more files than the window was tall had no way
+        to reach the rest of them. It also had one label carrying both the
+        file count and the result of a re-index, which meant starting an
+        index wiped the count. Those are two facts and they now have two
+        widgets.
+        """
+        page = ui.Page(self, "# DOCUMENTS",
+                       "Files under data/docs, split into chunks and "
+                       "embedded into a local index. Nothing is uploaded.")
+        self.panels["docs"] = page
 
-        tk.Label(top, text="# DOCUMENT INDEX", fg=GREEN, bg=BG, font=("Consolas", 12, "bold")).pack(side="left")
+        index_card = ui.Card(page.body, "INDEX")
+        index_card.pack(fill="x", pady=(0, ui.PAD_MD))
 
-        btn_f = tk.Frame(frame, bg=BG)
-        btn_f.pack(fill="x", padx=16)
-        tk.Button(btn_f, text="RE-INDEX", bg=BG, fg=GREEN, font=FONT_XS,
-                  command=self._reindex, borderwidth=1, padx=8).pack(side="left")
-        tk.Button(btn_f, text="REFRESH", bg=BG, fg=FG, font=FONT_XS,
-                  command=self._load_docs, borderwidth=1, padx=8).pack(side="left", padx=8)
+        self.docs_summary = ui.Readout(index_card.body, key_width=11)
+        self.docs_summary.pack(fill="x")
+        self.docs_summary.show("Loading...")
 
-        self.docs_info = tk.Label(frame, text="", fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w")
-        self.docs_info.pack(fill="x", padx=16, pady=(8, 4))
+        ui.button_row(index_card.body, [
+            ("RE-INDEX", self._reindex, "primary"),
+            ("REFRESH", self._load_docs, "secondary"),
+        ]).pack(anchor="w", pady=(ui.PAD_MD, 0))
 
-        self.docs_list = tk.Text(frame, bg=BG, fg=FG, font=FONT_SM, state="disabled",
-                                  borderwidth=0, highlightthickness=0)
-        self.docs_list.pack(fill="both", expand=True, padx=16, pady=4)
-        self.docs_list.tag_configure("filename", foreground=AMBER)
-        self.docs_list.tag_configure("ext", foreground=CYAN)
-        self.docs_list.tag_configure("size", foreground=FG_DIM)
+        self.docs_status = ui.StatusLine(index_card.body)
+        self.docs_status.pack(fill="x", pady=(ui.PAD_SM, 0))
+
+        files_card = ui.Card(page.body, "FILES")
+        files_card.pack(fill="x", pady=(0, ui.PAD_XL))
+        self.docs_list = ui.Readout(files_card.body)
+        self.docs_list.pack(fill="x")
+        self.docs_list.show("Loading...")
 
     def _load_docs(self):
         def do():
             r = api_get("/api/docs/list")
             files = r.get("files", [])
             total = r.get("total_size", 0)
+
             def show():
-                self.docs_info.configure(text=f"{len(files)} files, {self._fmt_bytes(total)} total")
-                self.docs_list.configure(state="normal")
-                self.docs_list.delete("1.0", "end")
+                self.docs_summary.begin()
+                self.docs_summary.row("files", str(len(files)),
+                                      "val" if files else "warn")
+                self.docs_summary.row("total size", self._fmt_bytes(total))
+                self.docs_summary.end()
+                if not files:
+                    # Naming the folder is the whole answer to "why is this
+                    # empty", and the old blank list did not give it.
+                    self.docs_list.show(
+                        "  Nothing indexed yet. Put PDF, DOCX, TXT or MD "
+                        "files in data/docs, then press RE-INDEX.", "warn")
+                    return
+                self.docs_list.begin()
                 for f in files:
-                    self.docs_list.insert("end", f"  {f['extension']:6s}", "ext")
-                    self.docs_list.insert("end", f"  {f['name']}", "filename")
-                    self.docs_list.insert("end", f"  ({self._fmt_bytes(f['size'])})\n", "size")
-                self.docs_list.configure(state="disabled")
+                    self.docs_list.write(f"  {f['extension'] or '--':<7s}",
+                                         "cyan")
+                    self.docs_list.write(f"{ui.truncate(f['name'], 58):<60s}",
+                                         "val")
+                    self.docs_list.line(self._fmt_bytes(f["size"]), "dim")
+                self.docs_list.end()
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 
     def _reindex(self):
-        self.docs_info.configure(text="Re-indexing...", fg=AMBER)
+        self.docs_status.busy("Re-indexing. This reads every file and "
+                              "rebuilds the vector index.")
+
         def do():
             r = api_post("/api/ingest")
             if r.get("status") == "ok":
-                self.after(0, lambda: self.docs_info.configure(
-                    text=f"Done! {r.get('vectors', 0)} vectors in index.", fg=GREEN))
+                vectors = r.get("vectors", 0)
+                self.after(0, lambda: self.docs_status.ok(
+                    f"Indexed. {vectors} vectors."))
                 self.after(500, self._load_status)
                 self.after(500, self._load_docs)
             else:
-                self.after(0, lambda: self.docs_info.configure(
-                    text=r.get("message", "Error"), fg=RED))
+                msg = r.get("message") or r.get("error") or "Index failed."
+                self.after(0, lambda m=msg: self.docs_status.error(m))
         threading.Thread(target=do, daemon=True).start()
 
     # ========== MODELS PANEL ==========
     def _build_models_panel(self):
-        frame = ttk.Frame(self, style="Panel.TFrame")
-        self.panels["models"] = frame
+        """Runtime facts, the Hugging Face adder, then one card per model.
 
-        tk.Label(frame, text="# MODEL MANAGER", fg=GREEN, bg=BG,
-                 font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", padx=16, pady=(16, 4))
-        tk.Label(frame, text="GGUF models. Click DOWNLOAD or SWITCH next to each entry.",
-                 fg=FG_DIM, bg=BG, font=FONT_SM, anchor="w").pack(fill="x", padx=16, pady=(0, 4))
+        The panel used to nest its own Canvas and Scrollbar inside the tab
+        so the model list could scroll, while the two sections above it
+        stayed fixed and the wheel did nothing anywhere. The whole page now
+        scrolls as one, from the Page component, and the hand-rolled canvas
+        is gone.
+        """
+        page = ui.Page(self, "# MODELS",
+                       "GGUF models run locally through llama.cpp. "
+                       "Switching unloads the current model before it "
+                       "loads the new one.")
+        self.panels["models"] = page
 
-        self.models_status = tk.Label(frame, text="", fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w")
-        self.models_status.pack(fill="x", padx=16, pady=(0, 4))
+        runtime = ui.Card(page.body, "RUNTIME")
+        runtime.pack(fill="x", pady=(0, ui.PAD_MD))
+        self.models_runtime = ui.Readout(runtime.body, key_width=10)
+        self.models_runtime.pack(fill="x")
+        self.models_runtime.show("Loading...")
+        self.models_status = ui.StatusLine(runtime.body)
+        self.models_status.pack(fill="x", pady=(ui.PAD_SM, 0))
 
         # Download progress. Hidden until a download starts, because an
         # empty bar sitting on screen reads as a broken one.
-        self.dl_frame = tk.Frame(frame, bg=BG)
+        self.dl_frame = tk.Frame(runtime.body, bg=BG2)
         self.dl_bar = ttk.Progressbar(self.dl_frame, mode="determinate",
-                                      maximum=100, length=420)
-        self.dl_bar.pack(side="left")
-        self.dl_label = tk.Label(self.dl_frame, text="", fg=FG_DIM, bg=BG,
-                                 font=FONT_XS, anchor="w")
-        self.dl_label.pack(side="left", padx=8)
+                                      maximum=100, length=420,
+                                      style=ui.PROGRESS_STYLE)
+        self.dl_bar.pack(fill="x")
+        self.dl_label = tk.Label(self.dl_frame, text="", fg=FG_DIM, bg=BG2,
+                                 font=FONT_MONO_XS, anchor="w")
+        self.dl_label.pack(fill="x", pady=(ui.PAD_XS, 0))
 
         # --- add from Hugging Face -------------------------------------
         # The catalog used to be a fixed list, so the only models the app
         # could run were the ones written into config.py. Anything on the
         # Hub in GGUF form works; what it needed was a way to say which.
-        add_box = tk.Frame(frame, bg=BG2, highlightbackground=BORDER,
-                           highlightthickness=1)
-        add_box.pack(fill="x", padx=16, pady=(8, 4))
+        add_card = ui.Card(page.body, "ADD FROM HUGGING FACE")
+        add_card.pack(fill="x", pady=(0, ui.PAD_MD))
 
-        tk.Label(add_box, text="ADD FROM HUGGING FACE", fg=GREEN, bg=BG2,
-                 font=("Consolas", 10, "bold"), anchor="w").pack(
-            fill="x", padx=12, pady=(10, 2))
-        tk.Label(add_box,
-                 text=("Browse huggingface.co for a model in GGUF format, "
-                       "copy the address from your browser, and paste it "
-                       "below. Quantized files ending Q4_K_M are the usual "
-                       "balance of size and quality."),
-                 fg=FG_DIM, bg=BG2, font=FONT_XS, anchor="w",
-                 wraplength=820, justify="left").pack(fill="x", padx=12)
+        ui.hint(add_card.body,
+                "Browse huggingface.co for a model in GGUF format, copy the "
+                "address from your browser, and paste it below. Quantized "
+                "files ending Q4_K_M are the usual balance of size and "
+                "quality.").pack(fill="x")
+        ui.link(add_card.body, HUGGINGFACE_BROWSE_URL,
+                HUGGINGFACE_BROWSE_URL).pack(fill="x", pady=(ui.PAD_SM, 0))
 
-        link = tk.Label(add_box, text=HUGGINGFACE_BROWSE_URL, fg=CYAN, bg=BG2,
-                        font=FONT_XS, anchor="w", cursor="hand2")
-        link.pack(fill="x", padx=12, pady=(4, 0))
-        link.bind("<Button-1>",
-                  lambda e: webbrowser.open(HUGGINGFACE_BROWSE_URL))
-
-        row = tk.Frame(add_box, bg=BG2)
-        row.pack(fill="x", padx=12, pady=(6, 10))
-        self.hf_entry = tk.Entry(row, bg=BG, fg=FG_BRIGHT, font=FONT,
-                                 insertbackground=GREEN, borderwidth=0,
-                                 highlightthickness=1,
-                                 highlightbackground=BORDER,
-                                 highlightcolor=GREEN)
+        row = ui.field_row(add_card.body, "repo url")
+        row.pack(fill="x", pady=(ui.PAD_MD, 0))
+        self.hf_entry = ui.entry(row, font=FONT)
         self.hf_entry.pack(side="left", fill="x", expand=True, ipady=5)
         self.hf_entry.bind("<Return>", lambda e: self._browse_hf_repo())
-        tk.Button(row, text="BROWSE", bg=BG2, fg=GREEN,
-                  font=("Consolas", 9, "bold"), borderwidth=1, padx=10,
-                  command=self._browse_hf_repo).pack(side="left", padx=(8, 0))
+        ui.button(row, "BROWSE", self._browse_hf_repo,
+                  kind="primary").pack(side="left", padx=(ui.PAD_SM, 0))
 
-        self.hf_status = tk.Label(add_box, text="", fg=FG_DIM, bg=BG2,
-                                  font=FONT_XS, anchor="w", wraplength=820,
-                                  justify="left")
-        self.hf_status.pack(fill="x", padx=12, pady=(0, 8))
+        self.hf_status = ui.StatusLine(add_card.body)
+        self.hf_status.pack(fill="x", pady=(ui.PAD_SM, 0))
 
         # Results of a browse: one row per quant, each with its size.
-        self.hf_results = tk.Frame(add_box, bg=BG2)
-        self.hf_results.pack(fill="x", padx=12, pady=(0, 10))
+        self.hf_results = tk.Frame(add_card.body, bg=BG2)
+        self.hf_results.pack(fill="x")
 
-        # Scrollable container for per-model rows.
-        outer = tk.Frame(frame, bg=BG)
-        outer.pack(fill="both", expand=True, padx=16, pady=4)
-        self.models_canvas = tk.Canvas(outer, bg=BG, highlightthickness=0)
-        sb = ttk.Scrollbar(outer, orient="vertical", command=self.models_canvas.yview)
-        self.models_inner = tk.Frame(self.models_canvas, bg=BG)
-        self.models_inner.bind("<Configure>",
-                               lambda e: self.models_canvas.configure(scrollregion=self.models_canvas.bbox("all")))
-        self.models_canvas.create_window((0, 0), window=self.models_inner, anchor="nw")
-        self.models_canvas.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        self.models_canvas.pack(side="left", fill="both", expand=True)
+        # One card per model, rebuilt on every refresh.
+        self.models_inner = tk.Frame(page.body, bg=BG)
+        self.models_inner.pack(fill="x", pady=(0, ui.PAD_XL))
 
     def _load_models(self):
         def do():
             payload = api_get("/api/models")
             if isinstance(payload, dict) and payload.get("error"):
-                self.after(0, lambda: self.models_status.configure(
-                    text=payload["error"], fg=RED))
+                self.after(0, lambda: self.models_status.error(payload["error"]))
                 return
             # New API returns {models: [...], status: {...}}; tolerate the old shape.
             if isinstance(payload, dict) and "models" in payload:
@@ -1224,118 +1171,129 @@ class RAGApp(tk.Tk):
         threading.Thread(target=do, daemon=True).start()
 
     def _render_models(self, models, status):
+        """One card per model, plus the runtime facts above them.
+
+        GPU state used to be written into the same label that reports the
+        result of a switch or a download, so starting a download replaced
+        the only statement of whether the GPU was even in use.
+        """
         for w in self.models_inner.winfo_children():
             w.destroy()
 
         gpu = status.get("gpu_supported")
-        layers = status.get("gpu_layers")
+        out = self.models_runtime.begin()
+        out.row("model", status.get("current_model") or "none loaded",
+                "ok" if status.get("loaded") else "warn")
         if gpu:
-            self.models_status.configure(
-                text=f"GPU: enabled  |  layers offloaded: {layers}", fg=GREEN)
+            out.row("gpu", "enabled", "ok")
+            # default_gpu_layers() returns 999 as "offload everything";
+            # llama.cpp caps it at the model's real layer count. Printing
+            # the sentinel, which is what this did, tells the user nothing.
+            layers = status.get("gpu_layers", 0)
+            out.row("layers", "all offloaded" if layers >= 999
+                    else f"{layers} offloaded")
         elif gpu is False:
-            self.models_status.configure(
-                text="GPU: not available (llama-cpp built without CUDA, or no NVIDIA GPU)",
-                fg=AMBER)
+            out.row("gpu", "not available", "warn")
+            out.row("reason", "llama-cpp built without CUDA, or no NVIDIA "
+                              "GPU", "dim")
+        if status.get("context_window"):
+            out.row("context", f"{status['context_window']} tokens")
+        if status.get("vram_gb"):
+            out.row("vram", f"{status['vram_gb']} GB")
+        out.end()
 
         for m in models:
-            row = tk.Frame(self.models_inner, bg=BG, pady=8)
-            row.pack(fill="x", padx=4)
+            active = bool(m.get("active"))
+            card = ui.Card(self.models_inner, m["name"],
+                           accent=GREEN if active else FG_BRIGHT)
+            card.pack(fill="x", pady=(0, ui.PAD_MD))
+            if active:
+                card.head_right(ui.badge(card.head, "ACTIVE", "ok"))
 
-            head = tk.Frame(row, bg=BG)
-            head.pack(fill="x")
-            tk.Label(head, text=m["name"], fg=GREEN, bg=BG,
-                     font=("Consolas", 11, "bold")).pack(side="left")
-            if m.get("active"):
-                tk.Label(head, text="  [ACTIVE]", fg=GREEN, bg=BG, font=FONT_XS).pack(side="left")
+            facts = ui.Readout(card.body, key_width=8).begin()
+            facts.row("file", ui.truncate(m["filename"], 84), "dim")
+            facts.row("size", f"{m['size']}, needs {m['ram']} RAM")
+            if m.get("repo"):
+                facts.row("repo", ui.truncate(m["repo"], 84), "dim")
+            facts.row("status",
+                      "downloaded" if m["downloaded"] else "not downloaded",
+                      "ok" if m["downloaded"] else "warn")
+            facts.end()
+            facts.pack(fill="x")
 
-            tk.Label(row, text=f"  file: {m['filename']}", fg=FG_DIM, bg=BG,
-                     font=FONT_XS, anchor="w").pack(fill="x")
-            tk.Label(row, text=f"  size: {m['size']}  |  RAM: {m['ram']}",
-                     fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w").pack(fill="x")
-            status_color = GREEN if m["downloaded"] else RED
-            status_text = "downloaded" if m["downloaded"] else "not downloaded"
-            tk.Label(row, text=f"  status: {status_text}", fg=status_color, bg=BG,
-                     font=FONT_XS, anchor="w").pack(fill="x")
+            if not m["downloaded"]:
+                ui.button(card.body, "DOWNLOAD",
+                          lambda f=m["filename"], i=m: self._download_model(f, i),
+                          kind="primary").pack(anchor="w", pady=(ui.PAD_MD, 0))
+            elif not active:
+                ui.button(card.body, "SWITCH",
+                          lambda f=m["filename"], n=m["name"]: self._switch_model(f, n),
+                          kind="secondary").pack(anchor="w", pady=(ui.PAD_MD, 0))
 
-            btns = tk.Frame(row, bg=BG)
-            btns.pack(fill="x", pady=(4, 0))
-            if m["downloaded"]:
-                if not m.get("active"):
-                    tk.Button(btns, text="SWITCH", bg=BG, fg=GREEN, font=("Consolas", 9, "bold"),
-                              borderwidth=1, padx=10,
-                              command=lambda f=m["filename"], n=m["name"]: self._switch_model(f, n)
-                              ).pack(side="left", padx=(0, 6))
-            else:
-                tk.Button(btns, text="DOWNLOAD", bg=BG, fg=AMBER, font=("Consolas", 9, "bold"),
-                          borderwidth=1, padx=10,
-                          command=lambda f=m["filename"], i=m: self._download_model(f, i)
-                          ).pack(side="left", padx=(0, 6))
+        self.panels["models"].refresh()
 
     def _browse_hf_repo(self):
         """Ask the backend what quants a pasted repo offers."""
         ref = self.hf_entry.get().strip()
         if not ref:
-            self.hf_status.configure(text="Paste a model URL first.", fg=AMBER)
+            self.hf_status.warn("Paste a model URL first.")
             return
         for child in self.hf_results.winfo_children():
             child.destroy()
-        self.hf_status.configure(text="Looking up the repo...", fg=FG_DIM)
+        self.hf_status.busy("Looking up the repo...")
 
         def do():
             r = api_post("/api/models/browse", {"ref": ref})
 
             def show():
                 if r.get("error"):
-                    self.hf_status.configure(text=r["error"], fg=RED)
+                    self.hf_status.error(r["error"])
                     return
                 files = r.get("files", [])
-                self.hf_status.configure(
-                    text=(f"{r.get('repo')}  ({r.get('license', 'unknown')} "
-                          f"license)  {len(files)} file(s)"),
-                    fg=GREEN)
+                self.hf_status.ok(
+                    f"{r.get('repo')}  ({r.get('license', 'unknown')} "
+                    f"license)  {len(files)} file(s)")
                 # Largest first: the better quants are the bigger ones, and
                 # they are what someone with room should be choosing.
                 for f in sorted(files, key=lambda x: -x.get("size_gb", 0))[:14]:
                     self._render_hf_file(r["repo"], f)
+                self.panels["models"].refresh()
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 
     def _render_hf_file(self, repo, f):
         row = tk.Frame(self.hf_results, bg=BG2)
-        row.pack(fill="x", pady=1)
-        label = f"{f['size_gb']:>6.2f} GB   {f['filename']}"
-        tk.Label(row, text=label, fg=FG, bg=BG2, font=FONT_XS,
+        row.pack(fill="x", pady=(ui.PAD_XS, 0))
+        label = f"{f['size_gb']:>6.2f} GB   {ui.truncate(f['filename'], 64)}"
+        tk.Label(row, text=label, fg=FG, bg=BG2, font=FONT_MONO_XS,
                  anchor="w").pack(side="left", fill="x", expand=True)
         if f.get("downloadable"):
-            tk.Button(row, text="DOWNLOAD", bg=BG2, fg=GREEN,
-                      font=("Consolas", 8, "bold"), borderwidth=1, padx=6,
-                      command=lambda: self._add_hf_model(repo, f["filename"])
-                      ).pack(side="right")
+            ui.button(row, "DOWNLOAD",
+                      lambda: self._add_hf_model(repo, f["filename"]),
+                      kind="primary", pad=(8, 2)).pack(side="right")
         else:
             # A split quant needs every part; hf_hub_download fetches one
             # file by name, so say why rather than offering a button that
             # cannot work.
             tk.Label(row, text="split, not supported", fg=AMBER, bg=BG2,
-                     font=FONT_XS).pack(side="right")
+                     font=FONT_MONO_XS).pack(side="right", padx=ui.PAD_SM)
 
     def _add_hf_model(self, repo, filename):
-        self.hf_status.configure(
-            text=f"Downloading {filename}. This can take several minutes.",
-            fg=AMBER)
+        self.hf_status.busy(
+            f"Downloading {filename}. This can take several minutes.")
 
         def do():
             r = api_post("/api/models/add", {"repo": repo, "filename": filename})
 
             def show():
                 if r.get("error"):
-                    self.hf_status.configure(text=r["error"], fg=RED)
+                    self.hf_status.error(r["error"])
                     return
                 profile = (r.get("entry") or {}).get("profile", {})
-                self.hf_status.configure(
-                    text=(f"Added {filename}: {profile.get('architecture', '?')}, "
-                          f"{profile.get('weight_gb', '?')} GB, trained context "
-                          f"{profile.get('trained_context', '?')}."),
-                    fg=GREEN)
+                self.hf_status.ok(
+                    f"Added {filename}: {profile.get('architecture', '?')}, "
+                    f"{profile.get('weight_gb', '?')} GB, trained context "
+                    f"{profile.get('trained_context', '?')}.")
                 # The new model changes both lists, and the hardware panel
                 # can now say whether it fits.
                 self._load_models()
@@ -1347,15 +1305,15 @@ class RAGApp(tk.Tk):
         if not messagebox.askyesno("Switch model",
                                     f"Unload current model and load {friendly_name}?\n\nThis frees the active model from RAM/VRAM before loading the new one."):
             return
-        self.models_status.configure(text=f"Loading {friendly_name}…", fg=AMBER)
+        self.models_status.busy(f"Loading {friendly_name}...")
 
         def do():
             r = api_post("/api/models/switch", {"filename": filename})
             if r.get("error"):
-                self.after(0, lambda: self.models_status.configure(text=r["error"], fg=RED))
+                self.after(0, lambda: self.models_status.error(r["error"]))
                 return
-            self.after(0, lambda: self.models_status.configure(
-                text=f"Loaded {friendly_name}", fg=GREEN))
+            self.after(0, lambda: self.models_status.ok(
+                f"Loaded {friendly_name}"))
             self.after(0, self._load_models)
             self.after(0, self._load_sysinfo)
             self.after(0, self._load_hardware)
@@ -1380,7 +1338,7 @@ class RAGApp(tk.Tk):
         if not proceed:
             return
 
-        self.models_status.configure(text=f"Downloading {info['name']}…", fg=AMBER)
+        self.models_status.busy(f"Downloading {info['name']}...")
         self._show_progress(True)
         self._dl_started = time.monotonic()
 
@@ -1395,18 +1353,17 @@ class RAGApp(tk.Tk):
                     elif ctype == "progress":
                         self.after(0, lambda c=chunk: self._dl_progress(c))
                     elif ctype == "done":
-                        self.after(0, lambda: self.models_status.configure(
-                            text=f"Downloaded {filename}.", fg=GREEN))
+                        self.after(0, lambda: self.models_status.ok(
+                            f"Downloaded {filename}."))
                         self.after(0, lambda: self._show_progress(False))
                         self.after(0, self._load_models)
                     elif ctype == "error":
                         msg = chunk.get("message", "download failed")
-                        self.after(0, lambda m=msg: self.models_status.configure(
-                            text=f"Error: {m}", fg=RED))
+                        self.after(0, lambda m=msg: self.models_status.error(
+                            f"Error: {m}"))
                         self.after(0, lambda: self._show_progress(False))
             except Exception as e:
-                self.after(0, lambda err=e: self.models_status.configure(
-                    text=str(err), fg=RED))
+                self.after(0, lambda err=e: self.models_status.error(str(err)))
                 self.after(0, lambda: self._show_progress(False))
 
         threading.Thread(target=do, daemon=True).start()
@@ -1426,10 +1383,11 @@ class RAGApp(tk.Tk):
 
     def _show_progress(self, visible):
         if visible:
-            self.dl_frame.pack(fill="x", padx=16, pady=(0, 8))
+            self.dl_frame.pack(fill="x", pady=(ui.PAD_MD, 0))
             self.dl_bar.configure(value=0)
-            self.dl_label.configure(text="starting…")
+            self.dl_label.configure(text="starting...")
         else:
+            self.dl_bar.stop()
             self.dl_frame.pack_forget()
 
     def _dl_start(self, filename, total_bytes):
@@ -1441,8 +1399,8 @@ class RAGApp(tk.Tk):
             # Size unknown: sweep instead of lying about a percentage.
             self.dl_bar.configure(mode="indeterminate")
             self.dl_bar.start(12)
-            self.dl_label.configure(text="downloading…")
-        self.models_status.configure(text=f"Downloading {filename}…", fg=AMBER)
+            self.dl_label.configure(text="downloading...")
+        self.models_status.busy(f"Downloading {filename}...")
 
     def _dl_progress(self, chunk):
         done = chunk.get("downloaded_bytes", 0)
@@ -1467,157 +1425,141 @@ class RAGApp(tk.Tk):
 
     # ========== SETTINGS PANEL ==========
     def _build_settings_panel(self):
-        frame = ttk.Frame(self, style="Panel.TFrame")
-        self.panels["settings"] = frame
+        """Five cards, one per thing the user can change.
 
-        tk.Label(frame, text="# USER MEMORY", fg=GREEN, bg=BG,
-                 font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", padx=16, pady=(16, 4))
-        tk.Label(frame, text="Persistent preferences injected into every query context.",
-                 fg=FG_DIM, bg=BG, font=FONT_SM, anchor="w").pack(fill="x", padx=16, pady=(0, 8))
+        This panel held the most content and the least structure: two page
+        headings, four unheaded groups, and one row of three destructive
+        buttons at the very bottom that mixed a harmless REFRESH with two
+        that delete things. It also did not scroll, and it is taller than
+        the 700px default window, so those bottom buttons could not be
+        reached at all without resizing. Each concern is now a card, the
+        destructive actions sit with the thing they destroy, and the page
+        scrolls.
+        """
+        page = ui.Page(self, "# SETTINGS",
+                       "What the assistant remembers between sessions, and "
+                       "the knobs that change how the model runs.")
+        self.panels["settings"] = page
 
-        # Set key/value
-        kv_frame = tk.Frame(frame, bg=BG)
-        kv_frame.pack(fill="x", padx=16, pady=4)
-        tk.Label(kv_frame, text="Key:", fg=FG_DIM, bg=BG, font=FONT_XS).pack(side="left")
-        self.mem_key = tk.Entry(kv_frame, bg=BG, fg=FG_BRIGHT, font=FONT_SM, width=15,
-                                insertbackground=GREEN, borderwidth=1, highlightbackground=BORDER)
-        self.mem_key.pack(side="left", padx=4, ipady=3)
-        tk.Label(kv_frame, text="Value:", fg=FG_DIM, bg=BG, font=FONT_XS).pack(side="left", padx=(8,0))
-        self.mem_val = tk.Entry(kv_frame, bg=BG, fg=FG_BRIGHT, font=FONT_SM, width=25,
-                                insertbackground=GREEN, borderwidth=1, highlightbackground=BORDER)
-        self.mem_val.pack(side="left", padx=4, ipady=3)
-        tk.Button(kv_frame, text="SET", bg=BG, fg=GREEN, font=FONT_XS,
-                  command=self._set_memory, borderwidth=1, padx=8).pack(side="left", padx=4)
+        # --- memory ----------------------------------------------------
+        mem_card = ui.Card(page.body, "MEMORY",
+                           "Preferences and facts injected into the context "
+                           "of every query.")
+        mem_card.pack(fill="x", pady=(0, ui.PAD_MD))
 
-        # Instruction
-        inst_frame = tk.Frame(frame, bg=BG)
-        inst_frame.pack(fill="x", padx=16, pady=4)
-        tk.Label(inst_frame, text="Instruction:", fg=FG_DIM, bg=BG, font=FONT_XS).pack(side="left")
-        self.mem_inst = tk.Entry(inst_frame, bg=BG, fg=FG_BRIGHT, font=FONT_SM,
-                                 insertbackground=GREEN, borderwidth=1, highlightbackground=BORDER)
-        self.mem_inst.pack(side="left", fill="x", expand=True, padx=4, ipady=3)
-        tk.Button(inst_frame, text="REMEMBER", bg=BG, fg=GREEN, font=FONT_XS,
-                  command=self._add_instruction, borderwidth=1, padx=8).pack(side="left", padx=4)
+        kv_row = ui.field_row(mem_card.body, "key")
+        kv_row.pack(fill="x")
+        self.mem_key = ui.entry(kv_row, width=18)
+        self.mem_key.pack(side="left", ipady=3)
 
-        # Memory display
-        tk.Label(frame, text="# CURRENT MEMORY", fg=GREEN, bg=BG,
-                 font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", padx=16, pady=(16, 4))
-        self.mem_display = tk.Text(frame, bg=BG, fg=FG, font=FONT_SM, height=10,
-                                    state="disabled", borderwidth=0, highlightthickness=0)
-        self.mem_display.pack(fill="both", expand=True, padx=16, pady=4)
-        self.mem_display.tag_configure("key", foreground=CYAN)
-        self.mem_display.tag_configure("val", foreground=FG_BRIGHT)
+        val_row = ui.field_row(mem_card.body, "value")
+        val_row.pack(fill="x", pady=(ui.PAD_SM, 0))
+        self.mem_val = ui.entry(val_row)
+        self.mem_val.pack(side="left", fill="x", expand=True, ipady=3)
+        ui.button(val_row, "SET", self._set_memory, kind="primary").pack(
+            side="left", padx=(ui.PAD_SM, 0))
 
-        # ---------------- Advanced ----------------
-        tk.Label(frame, text="# ADVANCED", fg=GREEN, bg=BG,
-                 font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", padx=16, pady=(16, 4))
-        tk.Label(frame,
-                 text="Context window: how much the model can hold at once "
-                      "(prompt + documents + reply).",
-                 fg=FG_DIM, bg=BG, font=FONT_SM, anchor="w",
-                 wraplength=620, justify="left").pack(fill="x", padx=16, pady=(0, 2))
-        tk.Label(frame,
-                 text="Auto picks the largest size that fits your GPU. Raise it to "
-                      "work with longer documents, at the cost of speed and memory. "
-                      "Takes effect the next time the model loads.",
-                 fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w",
-                 wraplength=620, justify="left").pack(fill="x", padx=16, pady=(0, 8))
+        inst_row = ui.field_row(mem_card.body, "instruction")
+        inst_row.pack(fill="x", pady=(ui.PAD_SM, 0))
+        self.mem_inst = ui.entry(inst_row)
+        self.mem_inst.pack(side="left", fill="x", expand=True, ipady=3)
+        ui.button(inst_row, "REMEMBER", self._add_instruction,
+                  kind="primary").pack(side="left", padx=(ui.PAD_SM, 0))
 
-        ctx_frame = tk.Frame(frame, bg=BG)
-        ctx_frame.pack(fill="x", padx=16, pady=4)
+        ui.divider(mem_card.body).pack(fill="x", pady=ui.PAD_MD)
+        ui.section_label(mem_card.body, "CURRENTLY REMEMBERED").pack(fill="x")
+        self.mem_display = ui.Readout(mem_card.body, key_width=12)
+        self.mem_display.pack(fill="x", pady=(ui.PAD_SM, 0))
+        self.mem_display.show("Loading...")
+        ui.button_row(mem_card.body, [
+            ("REFRESH", self._load_memory, "secondary"),
+            ("CLEAR MEMORY", self._clear_memory, "danger"),
+        ]).pack(anchor="w", pady=(ui.PAD_MD, 0))
 
+        # --- context window --------------------------------------------
+        ctx_card = ui.Card(page.body, "CONTEXT WINDOW",
+                           "How much the model can hold at once: prompt, "
+                           "documents, and reply together.")
+        ctx_card.pack(fill="x", pady=(0, ui.PAD_MD))
+        ui.hint(ctx_card.body,
+                "Auto picks the largest size that fits your GPU. Raise it to "
+                "work with longer documents, at the cost of speed and "
+                "memory. Takes effect the next time the model loads.").pack(
+            fill="x")
+
+        ctx_frame = tk.Frame(ctx_card.body, bg=BG2)
+        ctx_frame.pack(fill="x", pady=(ui.PAD_MD, 0))
         self.ctx_mode = tk.StringVar(value="auto")
-        tk.Radiobutton(ctx_frame, text="Auto (recommended)", variable=self.ctx_mode,
-                       value="auto", bg=BG, fg=FG, font=FONT_XS, selectcolor=BG,
-                       activebackground=BG, activeforeground=GREEN,
-                       command=self._on_ctx_mode_change).pack(side="left")
-        tk.Radiobutton(ctx_frame, text="Custom:", variable=self.ctx_mode,
-                       value="custom", bg=BG, fg=FG, font=FONT_XS, selectcolor=BG,
-                       activebackground=BG, activeforeground=GREEN,
-                       command=self._on_ctx_mode_change).pack(side="left", padx=(12, 0))
-
-        self.ctx_entry = tk.Entry(ctx_frame, bg=BG, fg=FG_BRIGHT, font=FONT_SM, width=8,
-                                  insertbackground=GREEN, borderwidth=1,
-                                  highlightbackground=BORDER, state="disabled")
-        self.ctx_entry.pack(side="left", padx=4, ipady=3)
-        tk.Label(ctx_frame, text="tokens", fg=FG_DIM, bg=BG,
+        ui.radio(ctx_frame, "Auto (recommended)", self.ctx_mode, "auto",
+                 self._on_ctx_mode_change).pack(side="left")
+        ui.radio(ctx_frame, "Custom", self.ctx_mode, "custom",
+                 self._on_ctx_mode_change).pack(side="left", padx=(ui.PAD_MD, 0))
+        self.ctx_entry = ui.entry(ctx_frame, width=8)
+        self.ctx_entry.configure(state="disabled")
+        self.ctx_entry.pack(side="left", padx=ui.PAD_SM, ipady=3)
+        tk.Label(ctx_frame, text="tokens", fg=FG_DIM, bg=BG2,
                  font=FONT_XS).pack(side="left")
-        tk.Button(ctx_frame, text="SAVE", bg=BG, fg=GREEN, font=FONT_XS,
-                  command=self._save_context_setting,
-                  borderwidth=1, padx=8).pack(side="left", padx=8)
+        ui.button(ctx_frame, "SAVE", self._save_context_setting,
+                  kind="primary").pack(side="left", padx=(ui.PAD_MD, 0))
 
-        self.ctx_status = tk.Label(frame, text="", fg=FG_DIM, bg=BG, font=FONT_XS,
-                                   anchor="w", wraplength=620, justify="left")
-        self.ctx_status.pack(fill="x", padx=16, pady=(2, 0))
-
-        tk.Label(frame,
-                 text="Guide:  4096 = short chats  ·  8192 = default  ·  "
-                      "16384 = long documents  ·  262144 = model maximum",
-                 fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w").pack(fill="x", padx=16, pady=(4, 0))
-
+        self.ctx_status = ui.StatusLine(ctx_card.body)
+        self.ctx_status.pack(fill="x", pady=(ui.PAD_SM, 0))
+        ui.hint(ctx_card.body,
+                "4096 short chats   8192 default   16384 long documents   "
+                "262144 model maximum").pack(fill="x", pady=(ui.PAD_SM, 0))
         self._load_context_setting()
 
-        # --- Resume ----------------------------------------------------
+        # --- resume ----------------------------------------------------
         # Lived in the Jobs tab until that was removed. It never belonged
         # there: the resume feeds usajobs_search's match scoring and the
         # federal resume drafter, neither of which had anything to do with
         # the Indeed search the tab was built around.
-        tk.Label(frame, text="RESUME", fg=GREEN, bg=BG, font=FONT_SM,
-                 anchor="w").pack(fill="x", padx=16, pady=(12, 2))
-        tk.Label(frame,
-                 text=("Used to score USAJOBS results against your background "
-                       "and to draft tailored federal resumes. PDF, DOCX, TXT "
-                       "or MD."),
-                 fg=FG_DIM, bg=BG, font=FONT_XS, anchor="w",
-                 wraplength=620, justify="left").pack(fill="x", padx=16)
-        resume_row = tk.Frame(frame, bg=BG)
-        resume_row.pack(fill="x", padx=16, pady=(6, 0))
-        self.resume_status_label = tk.Label(
-            resume_row, text="", fg=FG_DIM, bg=BG, font=FONT_XS,
-            anchor="w", wraplength=420, justify="left")
-        self.resume_status_label.pack(side="left", fill="x", expand=True)
-        self.resume_choose_btn = tk.Button(
-            resume_row, text="CHOOSE FILE", bg=BG, fg=GREEN, font=FONT_XS,
-            command=self._choose_resume, borderwidth=1, padx=8)
-        self.resume_choose_btn.pack(side="left", padx=(8, 4))
-        self.resume_clear_btn = tk.Button(
-            resume_row, text="CLEAR", bg=BG, fg=RED, font=FONT_XS,
-            command=self._clear_resume, borderwidth=1, padx=8)
-        self.resume_clear_btn.pack(side="left")
+        resume_card = ui.Card(page.body, "RESUME",
+                              "Scores USAJOBS results against your "
+                              "background and feeds the federal resume "
+                              "drafter. PDF, DOCX, TXT or MD.")
+        resume_card.pack(fill="x", pady=(0, ui.PAD_MD))
+        self.resume_status_label = ui.StatusLine(resume_card.body)
+        self.resume_status_label.pack(fill="x")
+        resume_buttons = ui.button_row(resume_card.body, [
+            ("CHOOSE FILE", self._choose_resume, "primary"),
+            ("CLEAR", self._clear_resume, "danger"),
+        ])
+        resume_buttons.pack(anchor="w", pady=(ui.PAD_MD, 0))
+        self.resume_choose_btn, self.resume_clear_btn = resume_buttons.buttons
         self._refresh_resume_status()
 
-        # --- Reasoning block -------------------------------------------
+        # --- reasoning -------------------------------------------------
         # Off by default. Measured on Qwen3.5 9B, "What is 2+2?" costs 1
         # token and 0.3s with this off, and 2048 tokens and 52s with it on,
         # where 2048 is MAX_NEW_TOKENS: the model is still reasoning when
         # the budget runs out and never reaches an answer. Enabling it is
         # only sensible alongside a much larger token ceiling, which is
         # what the warning below says.
-        tk.Label(frame, text="REASONING", fg=GREEN, bg=BG, font=FONT_SM,
-                 anchor="w").pack(fill="x", padx=16, pady=(12, 2))
+        think_card = ui.Card(page.body, "REASONING",
+                             "Whether the model works through a problem "
+                             "out loud before it answers.")
+        think_card.pack(fill="x", pady=(0, ui.PAD_MD))
         self.thinking_var = tk.BooleanVar(value=False)
-        think_frame = tk.Frame(frame, bg=BG)
-        think_frame.pack(fill="x", padx=16)
-        tk.Checkbutton(think_frame,
-                       text="Let the model think out loud before answering",
-                       variable=self.thinking_var, command=self._save_thinking_setting,
-                       fg=FG, bg=BG, selectcolor=BG, activebackground=BG,
-                       activeforeground=GREEN, font=FONT_XS,
-                       anchor="w").pack(side="left")
-        self.thinking_status = tk.Label(frame, text="", fg=FG_DIM, bg=BG,
-                                        font=FONT_XS, anchor="w",
-                                        wraplength=620, justify="left")
-        self.thinking_status.pack(fill="x", padx=16, pady=(2, 0))
+        ui.check(think_card.body,
+                 "Let the model think out loud before answering",
+                 self.thinking_var, self._save_thinking_setting).pack(
+            fill="x")
+        self.thinking_status = ui.StatusLine(think_card.body)
+        self.thinking_status.pack(fill="x", pady=(ui.PAD_SM, 0))
         self._load_thinking_setting()
 
-        btn_f = tk.Frame(frame, bg=BG)
-        btn_f.pack(fill="x", padx=16, pady=8)
-        tk.Button(btn_f, text="REFRESH", bg=BG, fg=FG, font=FONT_XS,
-                  command=self._load_memory, borderwidth=1, padx=8).pack(side="left")
-        tk.Button(btn_f, text="CLEAR MEMORY", bg=BG, fg=RED, font=FONT_XS,
-                  command=self._clear_memory, borderwidth=1, padx=8).pack(side="left", padx=8)
-        tk.Button(btn_f, text="CLEAR HISTORY", bg=BG, fg=RED, font=FONT_XS,
-                  command=self._clear_history, borderwidth=1, padx=8).pack(side="left")
+        # --- session ---------------------------------------------------
+        session_card = ui.Card(page.body, "SESSION")
+        session_card.pack(fill="x", pady=(0, ui.PAD_XL))
+        ui.hint(session_card.body,
+                "Forgets the running conversation. Indexed documents and "
+                "everything under MEMORY are untouched.").pack(fill="x")
+        ui.button_row(session_card.body, [
+            ("CLEAR HISTORY", self._clear_history, "danger"),
+        ]).pack(anchor="w", pady=(ui.PAD_MD, 0))
+        self.session_status = ui.StatusLine(session_card.body)
+        self.session_status.pack(fill="x", pady=(ui.PAD_SM, 0))
 
     # ---------------- Advanced: context window ----------------
 
@@ -1674,7 +1616,7 @@ class RAGApp(tk.Tk):
             import config
             current = config.load_context_override()
         except Exception as exc:
-            self.ctx_status.configure(text=f"Could not read setting: {exc}", fg=RED)
+            self.ctx_status.error(f"Could not read setting: {exc}")
             return
 
         if current is None:
@@ -1689,7 +1631,7 @@ class RAGApp(tk.Tk):
             self.ctx_entry.delete(0, "end")
             self.ctx_entry.insert(0, str(current))
             saved_text = f"Custom: {current} tokens."
-        self.ctx_status.configure(text=saved_text, fg=FG_DIM)
+        self.ctx_status.info(saved_text)
 
         # Fetch the live value so the user does not have to read the console
         # to find out what context the model actually loaded with.
@@ -1704,17 +1646,19 @@ class RAGApp(tk.Tk):
             if not live:
                 return
             bits = [saved_text, f"Running now: {live} tokens."]
+            tone = "info"
             headroom = self._safe_ctx_for(vram, model)
             if headroom and vram:
                 if headroom > live:
                     bits.append(f"Your {vram} GB GPU could handle about "
                                 f"{headroom} with this model.")
                 elif headroom < live:
-                    bits.append(f"Warning: about {headroom} is what your "
-                                f"{vram} GB GPU fits comfortably. Above that "
-                                f"it spills to system RAM and slows down.")
+                    tone = "warn"
+                    bits.append(f"About {headroom} is what your {vram} GB "
+                                f"GPU fits comfortably. Above that it spills "
+                                f"to system RAM and slows down.")
             text = "  ".join(bits)
-            self.after(0, lambda: self.ctx_status.configure(text=text, fg=FG_DIM))
+            self.after(0, lambda: self.ctx_status.set(text, tone))
 
         threading.Thread(target=do, daemon=True).start()
 
@@ -1723,24 +1667,21 @@ class RAGApp(tk.Tk):
             import config
             enabled = config.load_thinking_enabled()
         except Exception as exc:
-            self.thinking_status.configure(text=f"Could not load: {exc}", fg=RED)
+            self.thinking_status.error(f"Could not load: {exc}")
             return
         self.thinking_var.set(enabled)
         self._describe_thinking(enabled)
 
     def _describe_thinking(self, enabled):
         if enabled:
-            self.thinking_status.configure(
-                text=("On. Answers are slower and spend most of the token "
-                      "budget reasoning first; on short questions the model "
-                      "can run out before it answers. Raise max tokens if "
-                      "you keep this on."),
-                fg=AMBER)
+            self.thinking_status.warn(
+                "On. Answers are slower and spend most of the token budget "
+                "reasoning first; on short questions the model can run out "
+                "before it answers. Raise max tokens if you keep this on.")
         else:
-            self.thinking_status.configure(
-                text=("Off. The model answers directly, which is what the "
-                      "context and token budgets are sized for."),
-                fg=FG_DIM)
+            self.thinking_status.info(
+                "Off. The model answers directly, which is what the context "
+                "and token budgets are sized for.")
 
     def _save_thinking_setting(self):
         enabled = bool(self.thinking_var.get())
@@ -1748,7 +1689,7 @@ class RAGApp(tk.Tk):
             import config
             config.save_thinking_enabled(enabled)
         except Exception as exc:
-            self.thinking_status.configure(text=f"Could not save: {exc}", fg=RED)
+            self.thinking_status.error(f"Could not save: {exc}")
             return
         self._describe_thinking(enabled)
 
@@ -1757,38 +1698,36 @@ class RAGApp(tk.Tk):
         try:
             import config
         except Exception as exc:
-            self.ctx_status.configure(text=f"Could not load config: {exc}", fg=RED)
+            self.ctx_status.error(f"Could not load config: {exc}")
             return
 
         if self.ctx_mode.get() == "auto":
             try:
                 config.save_context_override(None)
             except Exception as exc:
-                self.ctx_status.configure(text=f"Could not save: {exc}", fg=RED)
+                self.ctx_status.error(f"Could not save: {exc}")
                 return
-            self.ctx_status.configure(
-                text="Saved. Auto-sizing restored. Reload the model to apply.",
-                fg=GREEN)
+            self.ctx_status.ok(
+                "Saved. Auto-sizing restored. Reload the model to apply.")
             return
 
         raw = self.ctx_entry.get().strip()
         if not raw.isdigit():
-            self.ctx_status.configure(
-                text="Enter a whole number of tokens, for example 8192.", fg=RED)
+            self.ctx_status.error(
+                "Enter a whole number of tokens, for example 8192.")
             return
 
         try:
             config.save_context_override(int(raw))
         except ValueError as exc:
-            self.ctx_status.configure(text=str(exc), fg=RED)
+            self.ctx_status.error(str(exc))
             return
         except Exception as exc:
-            self.ctx_status.configure(text=f"Could not save: {exc}", fg=RED)
+            self.ctx_status.error(f"Could not save: {exc}")
             return
 
-        self.ctx_status.configure(
-            text=f"Saved: {raw} tokens. Reload the model in the Models tab to apply.",
-            fg=GREEN)
+        self.ctx_status.ok(
+            f"Saved: {raw} tokens. Reload the model in the Models tab to apply.")
 
     def _set_memory(self):
         k, v = self.mem_key.get().strip(), self.mem_val.get().strip()
@@ -1808,25 +1747,24 @@ class RAGApp(tk.Tk):
     def _load_memory(self):
         def do():
             r = api_get("/api/memory")
+
             def show():
-                self.mem_display.configure(state="normal")
-                self.mem_display.delete("1.0", "end")
+                out = self.mem_display.begin()
                 if r.get("location"):
-                    self.mem_display.insert("end", "  location: ", "key")
-                    self.mem_display.insert("end", f"{r['location']}\n", "val")
-                self.mem_display.insert("end", "  units: ", "key")
-                self.mem_display.insert("end", f"{r.get('units', 'imperial')}\n", "val")
+                    out.row("location", r["location"])
+                out.row("units", r.get("units", "imperial"))
                 facts = r.get("learned_facts", {})
                 if facts:
-                    self.mem_display.insert("end", "\n  learned facts:\n", "key")
+                    out.blank().line("  learned facts", "key")
                     for k, v in facts.items():
-                        self.mem_display.insert("end", f"    {k}: {v}\n", "val")
+                        out.row(k, str(v), indent=4)
                 instr = r.get("custom_instructions", [])
                 if instr:
-                    self.mem_display.insert("end", "\n  instructions:\n", "key")
+                    out.blank().line("  instructions", "key")
                     for i in instr:
-                        self.mem_display.insert("end", f"    {i}\n", "val")
-                self.mem_display.configure(state="disabled")
+                        out.line(f"    {ui.truncate(str(i), 90)}")
+                out.end()
+                self.panels["settings"].refresh()
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 
@@ -1836,76 +1774,72 @@ class RAGApp(tk.Tk):
             self._load_memory()
 
     def _clear_history(self):
-        api_post("/api/clear_history", {"session_id": self.session_id})
+        r = api_post("/api/clear_history", {"session_id": self.session_id})
+        # This used to fire and say nothing at all, so the only way to tell
+        # a cleared history from a dead backend was to ask the model what
+        # you had just said.
+        if isinstance(r, dict) and r.get("error"):
+            self.session_status.error(r["error"])
+        else:
+            self.session_status.ok("Conversation history cleared.")
 
     # ========== DEVELOPER PANEL ==========
     def _build_dev_panel(self):
-        frame = ttk.Frame(self, style="Panel.TFrame")
-        self.panels["developer"] = frame
+        """System, hardware, and benchmark, one card each.
 
-        canvas = tk.Canvas(frame, bg=BG, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-        inner = tk.Frame(canvas, bg=BG)
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=inner, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+        The three blocks rendered correctly before, so the content below is
+        unchanged. What changed is the container: the hand-rolled canvas is
+        replaced by the shared Page, so the wheel works here, and the three
+        Text widgets are Readouts, so they size to their own content
+        instead of holding a guessed 18, 10, and 8 lines whether or not
+        that is what they hold. They are also monospaced now. Every row
+        here is written with a right-aligned key column
+        (``f"{label:>14s}"``), which lines up only in a fixed-width font,
+        and these were set in Segoe UI.
+        """
+        page = ui.Page(self, "# DEVELOPER",
+                       "What this machine is, what it could run, and how "
+                       "fast the loaded model actually is.")
+        self.panels["developer"] = page
 
-        tk.Label(inner, text="# SYSTEM INFO", fg=GREEN, bg=BG,
-                 font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", padx=16, pady=(16, 8))
-
-        self.sysinfo_text = tk.Text(inner, bg=BG, fg=FG, font=FONT_SM, height=18,
-                                     state="disabled", borderwidth=0, highlightthickness=0)
-        self.sysinfo_text.pack(fill="x", padx=16)
-        self.sysinfo_text.tag_configure("key", foreground=FG_DIM)
-        self.sysinfo_text.tag_configure("val", foreground=FG_BRIGHT)
-        self.sysinfo_text.tag_configure("green", foreground=GREEN)
-        self.sysinfo_text.tag_configure("amber", foreground=AMBER)
-        self.sysinfo_text.tag_configure("cyan", foreground=CYAN)
+        sys_card = ui.Card(page.body, "SYSTEM")
+        sys_card.pack(fill="x", pady=(0, ui.PAD_MD))
+        self.sysinfo_text = ui.Readout(sys_card.body, key_width=18)
+        self.sysinfo_text.pack(fill="x")
+        self.sysinfo_text.show("Loading...")
 
         # Hardware. Answers "what can this machine run", which is what
         # people expect a benchmark button to tell them and what the old
         # one never did: it only ever timed the model already loaded.
-        tk.Label(inner, text="# HARDWARE", fg=GREEN, bg=BG,
-                 font=("Consolas", 12, "bold"), anchor="w").pack(
-            fill="x", padx=16, pady=(16, 8))
+        hw_card = ui.Card(page.body, "HARDWARE",
+                          "Read from nvidia-smi and psutil. Needs no model "
+                          "loaded.")
+        hw_card.pack(fill="x", pady=(0, ui.PAD_MD))
+        self.hw_text = ui.Readout(hw_card.body, key_width=14)
+        self.hw_text.pack(fill="x")
+        self.hw_text.show("Loading...")
 
-        self.hw_text = tk.Text(inner, bg=BG, fg=FG, font=FONT_SM, height=10,
-                               state="disabled", borderwidth=0,
-                               highlightthickness=0)
-        self.hw_text.pack(fill="x", padx=16)
-        for tag, colour in (("key", FG_DIM), ("val", FG_BRIGHT),
-                            ("green", GREEN), ("amber", AMBER),
-                            ("red", RED), ("cyan", CYAN)):
-            self.hw_text.tag_configure(tag, foreground=colour)
-
-        # Benchmark
-        tk.Label(inner, text="# BENCHMARK", fg=GREEN, bg=BG,
-                 font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", padx=16, pady=(16, 8))
-
-        bench_f = tk.Frame(inner, bg=BG)
-        bench_f.pack(fill="x", padx=16)
-        tk.Button(bench_f, text="RUN BENCHMARK", bg=BG, fg=GREEN, font=("Consolas", 10, "bold"),
-                  command=self._run_benchmark, borderwidth=1, padx=10).pack(side="left")
-
-        self.bench_result = tk.Text(inner, bg=BG, fg=FG, font=FONT_SM, height=8,
-                                     state="disabled", borderwidth=0, highlightthickness=0)
-        self.bench_result.pack(fill="x", padx=16, pady=8)
-        self.bench_result.tag_configure("key", foreground=FG_DIM)
-        self.bench_result.tag_configure("val", foreground=FG_BRIGHT)
-        self.bench_result.tag_configure("green", foreground=GREEN)
-        self.bench_result.tag_configure("amber", foreground=AMBER)
+        bench_card = ui.Card(page.body, "BENCHMARK",
+                             "Times a fixed prompt against the model that "
+                             "is loaded right now.")
+        bench_card.pack(fill="x", pady=(0, ui.PAD_XL))
+        ui.button(bench_card.body, "RUN BENCHMARK", self._run_benchmark,
+                  kind="primary").pack(anchor="w")
+        self.bench_result = ui.Readout(bench_card.body, key_width=8)
+        self.bench_result.pack(fill="x", pady=(ui.PAD_MD, 0))
+        self.bench_result.show("Not run yet.")
 
     def _load_sysinfo(self):
         def do():
             r = api_get("/api/system")
             if r.get("error"):
+                # Returning quietly left the block reading "Loading..."
+                # forever, which is the one thing it definitely was not
+                # doing any more.
+                self.after(0, lambda m=r["error"]: self.sysinfo_text.show(
+                    f"  {m}", "red"))
                 return
             def show():
-                t = self.sysinfo_text
-                t.configure(state="normal")
-                t.delete("1.0", "end")
                 pairs = [
                     ("platform", r.get("platform", "?"), "val"),
                     ("python", r.get("python", "?"), "val"),
@@ -1921,11 +1855,12 @@ class RAGApp(tk.Tk):
                     ("web search", str(r.get("web_search", "?")), "green"),
                     ("faithfulness", str(r.get("faithfulness_threshold", "?")), "amber"),
                 ]
+                out = self.sysinfo_text.begin()
                 for label, val, tag in pairs:
-                    t.insert("end", f"  {label:>18s} : ", "key")
-                    t.insert("end", f"{val}\n", tag)
-                t.configure(state="disabled")
+                    out.row(label, str(val), tag)
+                out.end()
                 self.model_label.configure(text=r.get("current_model", "?"))
+                self.panels["developer"].refresh()
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 
@@ -1936,47 +1871,37 @@ class RAGApp(tk.Tk):
 
             def show():
                 w = self.hw_text
-                w.configure(state="normal")
-                w.delete("1.0", "end")
                 if r.get("error"):
-                    w.insert("end", f"  {r['error']}\n", "red")
-                    w.configure(state="disabled")
+                    w.show(f"  {r['error']}", "red")
                     return
-                gpu = r.get("gpu") or "none detected"
-                w.insert("end", f"  {'gpu':>14s} : ", "key")
-                w.insert("end", f"{gpu}\n", "green" if r.get("cuda") else "amber")
-                w.insert("end", f"  {'vram':>14s} : ", "key")
-                w.insert("end", f"{r.get('vram_gb', 0)} GB\n", "val")
-                w.insert("end", f"  {'system ram':>14s} : ", "key")
-                w.insert("end", f"{r.get('ram_gb', 0)} GB\n", "val")
-                w.insert("end", f"  {'kv cache':>14s} : ", "key")
-                w.insert("end", f"{r.get('kv_gb_per_1k', 0)} GB per 1024 tokens "
-                                f"(measured)\n", "cyan")
-                w.insert("end", "\n  models this machine can run:\n", "key")
+                w.begin()
+                w.row("gpu", r.get("gpu") or "none detected",
+                      "green" if r.get("cuda") else "amber")
+                w.row("vram", f"{r.get('vram_gb', 0)} GB")
+                w.row("system ram", f"{r.get('ram_gb', 0)} GB")
+                w.row("kv cache",
+                      f"{r.get('kv_gb_per_1k', 0)} GB per 1024 tokens "
+                      f"(measured)", "cyan")
+                w.blank().line("  models this machine can run:", "key")
                 for m in r.get("models", []):
                     tag = {"gpu": "green", "cpu": "amber"}.get(m["verdict"], "red")
-                    w.insert("end", f"    {m['name']:<26} ", "val")
-                    w.insert("end", f"{m['note']}\n", tag)
-                w.configure(state="disabled")
+                    w.write(f"    {ui.truncate(m['name'], 26):<28}", "val")
+                    w.line(m["note"], tag)
+                w.end()
+                self.panels["developer"].refresh()
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 
     def _run_benchmark(self):
-        self.bench_result.configure(state="normal")
-        self.bench_result.delete("1.0", "end")
-        self.bench_result.insert("end", "  Running benchmark...", "key")
-        self.bench_result.configure(state="disabled")
+        self.bench_result.show("  Running benchmark...", "key")
 
         def do():
             r = api_get("/api/benchmark")
 
             def show():
                 t = self.bench_result
-                t.configure(state="normal")
-                t.delete("1.0", "end")
                 if r.get("error"):
-                    t.insert("end", f"  [error] {r['error']}", "val")
-                    t.configure(state="disabled")
+                    t.show(f"  {r['error']}", "red")
                     return
                 rows = [
                     ("model", r.get("model", "?"), "green"),
@@ -1986,16 +1911,17 @@ class RAGApp(tk.Tk):
                      "green" if r.get("complete") else "amber"),
                     ("elapsed", f"{r.get('elapsed', 0)}s", "val"),
                 ]
+                t.begin()
                 for label, value, tag in rows:
-                    t.insert("end", f"  {label:>8s} : ", "key")
-                    t.insert("end", f"{value}\n", tag)
+                    t.row(label, value, tag)
                 if not r.get("complete"):
                     # A run that stopped early measured mostly fixed
                     # overhead, so the speed above is not a throughput
                     # figure. Say so rather than let it read as one.
-                    t.insert("end", "\n  short run, speed is not reliable\n",
-                             "amber")
-                t.configure(state="disabled")
+                    t.blank().line("  short run, speed is not reliable",
+                                   "amber")
+                t.end()
+                self.panels["developer"].refresh()
             self.after(0, show)
         threading.Thread(target=do, daemon=True).start()
 

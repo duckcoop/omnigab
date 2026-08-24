@@ -214,6 +214,7 @@ omnigab/
 │   ├── tools/             Document search, web, memory, jobs, CVE, Python
 │   ├── extraction/        Bill extraction schema and verification gate
 │   ├── jobs/              Job board sources and multi-board search
+│   ├── desktop_ui.py      Design tokens and shared desktop components
 │   ├── web_app.py         Local FastAPI backend
 │   ├── generator.py       llama.cpp wrapper with GPU offload
 │   ├── embeddings.py      sentence-transformers embeddings

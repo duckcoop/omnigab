@@ -90,12 +90,13 @@ Real paths. Verify before you assume.
 omnigab/
 ├── setup.bat                    one-shot Windows installer
 ├── omnigab.bat                  launcher
-├── desktop_app.py               tkinter desktop shell (84 KB, monolithic)
+├── desktop_app.py               tkinter desktop shell (86 KB, 2029 lines)
 ├── requirements.txt             unpinned, all >=
 ├── .flake8                      max-line-length 120, E501 ignored
 │
 ├── src/
 │   ├── config.py                paths, curated model catalog, knobs
+│   ├── desktop_ui.py            design tokens + shared tk components
 │   ├── core/model_catalog.py    hugging face browse, download, profiling
 │   ├── core/
 │   │   ├── agent.py             THE tool-calling loop + system prompt

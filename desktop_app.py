@@ -1529,6 +1529,45 @@ class RAGApp(tk.Tk):
         self.resume_choose_btn, self.resume_clear_btn = resume_buttons.buttons
         self._refresh_resume_status()
 
+        # --- job eligibility -------------------------------------------
+        # Federal postings are gated on hiring path, and the gate is a fact
+        # about the person that no amount of reading their resume will
+        # produce: a resume does not say whether somebody is a veteran, a
+        # current federal employee, or still enrolled. Before this existed
+        # the search ranked by resume similarity alone, which put a
+        # federal-employees-only vacancy above a Pathways posting the user
+        # was actually eligible for.
+        elig_card = ui.Card(page.body, "JOB ELIGIBILITY",
+                            "Tick anything that applies to you. Federal "
+                            "postings state who may apply, and the search "
+                            "uses this to hide the ones you cannot.")
+        elig_card.pack(fill="x", pady=(0, ui.PAD_MD))
+        ui.hint(elig_card.body,
+                "Everyone can apply to postings open to the public, so that "
+                "one is always on and is not listed here.").pack(fill="x")
+
+        self.elig_vars = {}
+        try:
+            from jobs.eligibility import PROFILE_CHOICES
+            active = set(self._load_job_profile())
+        except Exception as exc:
+            ui.hint(elig_card.body, f"Could not load: {exc}",
+                    tone="error").pack(fill="x", pady=(ui.PAD_SM, 0))
+            PROFILE_CHOICES, active = (), set()
+
+        for key, label, explanation in PROFILE_CHOICES:
+            var = tk.BooleanVar(value=key in active)
+            self.elig_vars[key] = var
+            ui.check(elig_card.body, label, var,
+                     self._save_job_profile).pack(fill="x",
+                                                  pady=(ui.PAD_SM, 0))
+            ui.hint(elig_card.body, explanation).pack(
+                fill="x", padx=(ui.PAD_XL, 0))
+
+        self.elig_status = ui.StatusLine(elig_card.body)
+        self.elig_status.pack(fill="x", pady=(ui.PAD_MD, 0))
+        self._describe_job_profile(active)
+
         # --- reasoning -------------------------------------------------
         # Off by default. Measured on Qwen3.5 9B, "What is 2+2?" costs 1
         # token and 0.3s with this off, and 2048 tokens and 52s with it on,
@@ -1661,6 +1700,40 @@ class RAGApp(tk.Tk):
             self.after(0, lambda: self.ctx_status.set(text, tone))
 
         threading.Thread(target=do, daemon=True).start()
+
+    # ---------------- job eligibility ----------------
+
+    @staticmethod
+    def _load_job_profile():
+        import config
+        return config.load_job_profile()
+
+    def _save_job_profile(self):
+        """Persist the ticked hiring paths and say what they now mean."""
+        chosen = [key for key, var in self.elig_vars.items() if var.get()]
+        try:
+            import config
+            config.save_job_profile(chosen)
+        except Exception as exc:
+            self.elig_status.error(f"Could not save: {exc}")
+            return
+        self._describe_job_profile(set(chosen) | {"public"})
+
+    def _describe_job_profile(self, active):
+        """Say what the current selection does, in postings rather than flags."""
+        claimed = sorted(key for key in active if key != "public")
+        if not claimed:
+            self.elig_status.info(
+                "Public postings only. Anything open solely to federal "
+                "employees or a special authority will be hidden from "
+                "federal searches.")
+            return
+        try:
+            from jobs.eligibility import PATH_LABELS
+            names = ", ".join(PATH_LABELS.get(k, k).lower() for k in claimed)
+        except Exception:
+            names = ", ".join(claimed)
+        self.elig_status.ok(f"Also matching postings open to {names}.")
 
     def _load_thinking_setting(self):
         try:

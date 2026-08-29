@@ -155,6 +155,53 @@ def save_thinking_enabled(enabled: bool) -> None:
         json.dump({"enabled": bool(enabled)}, f, indent=2)
 
 
+JOB_PROFILE_PATH = MODEL_STATE_PATH.parent / "job_profile.json"
+
+# Which federal hiring paths the person using this app can actually apply
+# under. USAJOBS gates most postings on these, and the answer is a fact
+# about the user that no amount of reading their resume will produce: a
+# resume does not say whether somebody is a veteran, a current federal
+# employee, or still enrolled.
+#
+# It is a setting rather than a constant because the app is not written for
+# one person. The default is the public path alone, which is what anyone
+# has, so an untouched install hides nothing it should not.
+JOB_PROFILE_DEFAULT = ["public"]
+
+
+def load_job_profile() -> list[str]:
+    """Hiring paths the user qualifies for. Always includes "public"."""
+    paths: list[str] = []
+    try:
+        if JOB_PROFILE_PATH.exists():
+            with open(JOB_PROFILE_PATH, "r", encoding="utf-8") as f:
+                value = json.load(f).get("paths")
+            if isinstance(value, list):
+                paths = [str(p) for p in value if isinstance(p, str)]
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        paths = []
+    if not paths:
+        return list(JOB_PROFILE_DEFAULT)
+    # "The public" is not a claim anybody can fail to make, and dropping it
+    # would hide every ordinary vacancy from a user who only ticked
+    # "veteran". Cheaper to guarantee it here than to trust the caller.
+    if "public" not in paths:
+        paths.append("public")
+    return paths
+
+
+def save_job_profile(paths: list[str]) -> None:
+    """Persist the hiring paths the user qualifies for."""
+    from jobs.eligibility import HIRING_PATHS
+
+    unknown = [p for p in paths if p not in HIRING_PATHS]
+    if unknown:
+        raise ValueError(f"Unknown hiring path(s): {', '.join(sorted(unknown))}")
+    JOB_PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(JOB_PROFILE_PATH, "w", encoding="utf-8") as f:
+        json.dump({"paths": sorted(set(paths) | {"public"})}, f, indent=2)
+
+
 def load_context_override() -> int | None:
     """User-set context window, or None to auto-size against VRAM."""
     try:

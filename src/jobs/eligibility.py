@@ -75,6 +75,43 @@ HARD_PATHS = frozenset({
 # is told why a posting was hidden rather than just given a shorter list.
 PATH_LABELS = {key: labels[0] for key, labels in HIRING_PATHS.items()}
 
+# What the Settings tab offers, as (key, checkbox label, explanation).
+#
+# Declared here rather than in the UI so the vocabulary has one home: a
+# path added to HIRING_PATHS and forgotten here is a path the user can
+# never claim, which silently hides jobs they could have applied for.
+#
+# "public" is absent on purpose. Everyone has it, load_job_profile forces
+# it on, and a checkbox nobody can sensibly untick is a checkbox that only
+# invites mistakes. "internal_agency" is absent because it is specific to
+# whichever agency posted the job, so it is not a fact about a person.
+PROFILE_CHOICES: tuple[tuple[str, str, str], ...] = (
+    ("students", "Current student",
+     "Enrolled at least half-time in an accredited programme."),
+    ("recent_graduates", "Recent graduate",
+     "Graduated within the last 2 years, or 6 as a veteran."),
+    ("veterans", "Veteran",
+     "Eligible under VEOA, VRA, or 30 percent disabled hiring."),
+    ("military_spouses", "Military spouse",
+     "Spouse of an active-duty service member."),
+    ("disability", "Individual with a disability",
+     "Eligible for Schedule A appointment."),
+    ("native_americans", "Native American",
+     "Eligible under Indian preference."),
+    ("federal_competitive", "Current federal employee, competitive service",
+     "Serving in a competitive-service position now."),
+    ("federal_excepted", "Current federal employee, excepted service",
+     "Serving in an excepted-service position now."),
+    ("career_transition", "Displaced federal employee",
+     "Eligible under CTAP, ICTAP, or the RPL."),
+    ("national_guard", "National Guard or reserves",
+     "Serving in the Guard or a reserve component."),
+    ("peace_corps", "Peace Corps or AmeriCorps VISTA alumnus",
+     "Completed a term of service."),
+    ("family_overseas", "Family of overseas employees",
+     "Family member of a federal employee stationed overseas."),
+)
+
 _SECTION_HEADING = "this job is open to"
 
 # Headings that live in the same block but name no audience. "Help" is a

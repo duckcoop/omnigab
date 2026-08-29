@@ -17,6 +17,11 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 data/context_override.json
+# Sibling settings files. thinking.json was missed when the setting
+# was added, so it has been sitting in git status as untracked ever
+# since; job_profile.json is the same class of thing.
+data/thinking.json
+data/job_profile.json
 data/kev_catalog.json
 
 # Generated resume drafts. These contain the user's real work history.

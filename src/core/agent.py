@@ -87,12 +87,18 @@ write the final prose answer to the user.
     boost results whose title carries (AI), (AIML), or (ML). Phrasing like \
     "AI jobs", "experimental jobs", "cutting edge", "ML roles", "data science \
     positions" all mean ai_focus=true.
-- User asks for general private-sector jobs ("help desk", "IT job", "software engineer"):
-    → call `open_in_browser` with the appropriate `site` template \
-    (linkedin / ziprecruiter / glassdoor) — these sites work in the user's \
-    real browser. Indeed is NOT in the tool catalog because its Cloudflare \
-    challenge breaks automated scraping; if the user explicitly asks for \
-    Indeed, use `open_in_browser` with `site="indeed"`.
+- User asks for general private-sector jobs ("help desk", "IT job", "software \
+  engineer"), or asks to look beyond federal listings:
+    → call `job_boards_search`. It returns live postings from Amazon Jobs, \
+    RemoteOK, and any Greenhouse or Lever company board, AND prefilled search \
+    links for LinkedIn, Handshake, and Indeed, which prohibit automated access \
+    and are handed to the user's own browser instead. Pass `location` when the \
+    user names one. Use `usajobs_search` for federal roles, and both when the \
+    user wants a full picture. Reserve `open_in_browser` for when the user \
+    explicitly asks to "just open" a site. Never call `open_in_browser` after \
+    a job search has already returned results: the browser links are part of \
+    that result and are shown to the user for you, and calling it opens a tab \
+    on their desktop that they did not ask for.
 - User asks to "just open" LinkedIn / Glassdoor / Indeed:
     → call `open_in_browser` with the appropriate `site` template.
 - User asks about their files, docs, uploaded resume, IT runbooks:
@@ -148,6 +154,12 @@ Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"Artificial 
 
 User: look for experimental cutting edge ML positions
 Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"Machine Learning","ai_focus":true,"max_jobs":10}}</tool_call>
+
+User: find me some help desk jobs in Austin
+Assistant: <tool_call>{"name":"job_boards_search","arguments":{"query":"help desk","location":"Austin, TX"}}</tool_call>
+
+User: can you look outside usajobs too
+Assistant: <tool_call>{"name":"job_boards_search","arguments":{"query":"IT Specialist"}}</tool_call>
 
 User: just open indeed for help desk jobs in Austin TX
 Assistant: <tool_call>{"name":"open_in_browser","arguments":{"site":"indeed","query":"help desk","location":"Austin TX","days_ago":14}}</tool_call>
@@ -263,10 +275,12 @@ block per response, not one per job.
 
 Job search results are rendered for you.
 
-When `usajobs_search` returns, the posting list (titles, agencies, match
-percentages, and verified apply links) is formatted deterministically in
-Python and appended below your reply. Do NOT list the jobs yourself and do
-NOT write any URLs. Write one or two sentences of useful commentary, for
+When `usajobs_search` or `job_boards_search` returns, the posting list
+(titles, agencies, match percentages, and apply links) is formatted
+deterministically in Python and appended below your reply. That includes the
+browser handoff links for the boards that prohibit automation, so those reach
+the user without you writing them. Do NOT list the jobs yourself and do NOT
+write any URLs. Write one or two sentences of useful commentary, for
 example which posting is the strongest fit and why, or what gap shows up
 across several of them. Then stop.
 
@@ -487,7 +501,14 @@ class Agent:
     # Tools whose results are rendered deterministically in Python. The
     # model receives only a compact, URL-free digest of these, because it
     # never has to reproduce their fields.
-    RENDERED_TOOLS = {"usajobs_search"}
+    #
+    # job_boards_search joined usajobs_search here because it emits URLs
+    # too, and invariant I5 is about the model never writing one, not
+    # about which board the posting came from. It needed no renderer work:
+    # jobs.sources.posting() already normalises to the keys job_renderer
+    # reads, which is what its docstring has always claimed and what
+    # tests/test_job_boards_rendering.py now actually enforces.
+    RENDERED_TOOLS = {"usajobs_search", "job_boards_search"}
 
     def _observation_payload(self, result: ToolResult) -> str:
         if (result.ok and result.name in self.RENDERED_TOOLS

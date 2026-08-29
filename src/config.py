@@ -196,13 +196,25 @@ N_THREADS = 8       # match your physical core count (Ryzen 9850X3D = 8 cores)
 GENERATION_MODEL = "HuggingFaceTB/SmolLM2-360M-Instruct"
 USE_GGUF = True
 
-# Per-response generation ceiling. Job-search answers need room for the
-# <thinking> block (~250 tokens for 10 jobs) plus ~50 tokens per rendered
-# job. 10 jobs = ~750-900 tokens; 25 jobs = ~1500. 1536 leaves comfortable
-# headroom and still fits inside the 8192-token context alongside the
-# system prompt, tool result, and history. Short chats cost nothing — the
-# model emits EOT naturally regardless of this cap.
-MAX_NEW_TOKENS = 2048
+# Per-response generation ceiling. Short chats cost nothing: the model
+# emits EOT naturally regardless of this cap.
+#
+# It has to fit in what is left of the context after the prompt, and there
+# is not much. Measured on the 9B at CONTEXT_WINDOW = 8192, on a job-search
+# turn with no history at all:
+#
+#   SYSTEM_PROMPT          3641 tokens
+#   tool catalog, 15 tools 2382 tokens
+#   assembled hop-2 prompt 6228 tokens
+#   room left for a reply  1964 tokens
+#
+# The value here was 2048, which is 84 tokens more room than exists, and
+# the comment above it claimed 1536 while the constant said otherwise. 1536
+# is the number that was actually reasoned about, so the constant now says
+# it. That leaves roughly 400 tokens of slack for conversation history,
+# which is thin: see docs/TODOS.md, the prompt is the thing that has to
+# shrink and PR4 owns it.
+MAX_NEW_TOKENS = 1536
 TEMPERATURE = 0.15
 TOP_P = 0.9
 

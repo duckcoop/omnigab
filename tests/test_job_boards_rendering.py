@@ -178,3 +178,77 @@ def test_handoff_only_digest_reports_the_failed_source():
 def test_unrenderable_payloads_fall_back_to_model_output(payload):
     """Returning '' is the signal for "let the model answer normally"."""
     assert job_renderer.render_results(payload) == ""
+
+
+# ------------------------------------------------- repeated tool calls
+
+def _result(name, payload):
+    from core.tool_protocol import ToolResult
+    return ToolResult(name=name, ok=True, output=payload)
+
+
+def test_repeated_calls_to_one_tool_render_a_single_merged_block():
+    """A model that searches twice must not print the list twice.
+
+    Observed live: the model called usajobs_search, reconsidered, called it
+    again with identical arguments, and the reply carried the same five
+    postings twice in two different orders. Every result set was being
+    rendered in full.
+    """
+    agent = Agent.__new__(Agent)          # no model or tools needed
+    second = dict(BOARD_PAYLOAD)
+    second["results"] = list(reversed(BOARD_PAYLOAD["results"]))
+
+    block = agent._rendered_blocks([
+        _result("job_boards_search", BOARD_PAYLOAD),
+        _result("job_boards_search", second),
+    ])
+    assert block.count("Senior Backend Engineer") == 1
+    assert block.count("IT Specialist (Data Center Technician)") == 1
+    assert block.count("Found ") == 1
+
+
+def test_merging_keeps_postings_only_one_call_found():
+    """Two different queries each contribute, which is why this merges."""
+    agent = Agent.__new__(Agent)
+    extra = dict(BOARD_PAYLOAD)
+    extra["results"] = [posting(title="Help Desk Technician", company="Acme",
+                                url="https://example.invalid/unique",
+                                source="amazon")]
+    block = agent._rendered_blocks([
+        _result("job_boards_search", BOARD_PAYLOAD),
+        _result("job_boards_search", extra),
+    ])
+    assert "Help Desk Technician" in block
+    assert "Senior Backend Engineer" in block
+    assert block.count("Found ") == 1
+
+
+def test_merging_does_not_mutate_the_tool_result():
+    """The payload belongs to the tool; rendering must not grow it."""
+    agent = Agent.__new__(Agent)
+    before = len(BOARD_PAYLOAD["results"])
+    extra = dict(BOARD_PAYLOAD)
+    extra["results"] = [posting(title="X", company="Y",
+                                url="https://example.invalid/z", source="amazon")]
+    agent._rendered_blocks([
+        _result("job_boards_search", BOARD_PAYLOAD),
+        _result("job_boards_search", extra),
+    ])
+    assert len(BOARD_PAYLOAD["results"]) == before
+
+
+def test_different_tools_still_render_their_own_block():
+    """usajobs and the private boards are two lists, not one."""
+    agent = Agent.__new__(Agent)
+    federal = {"ok": True, "found": 1, "location": "(anywhere)", "results": [
+        {"title": "IT Specialist", "agency": "DISA", "location": "MD",
+         "salary": "$57,736", "series_code": "2210", "match_percent": 20,
+         "url": "https://www.usajobs.gov/job/1"}], "handoffs": []}
+    block = agent._rendered_blocks([
+        _result("usajobs_search", federal),
+        _result("job_boards_search", BOARD_PAYLOAD),
+    ])
+    assert block.count("Found ") == 2
+    assert "Apply on USAJOBS" in block
+    assert "View on Amazon Jobs" in block

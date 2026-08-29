@@ -101,6 +101,62 @@ def _scrape_integrity_error(card_count: int, posting_links: int,
             f"src/tools/usajobs_search.py.")
 
 
+# --- what "entry level" means -------------------------------------------
+# Two things, not both at once. A Pathways posting (student or recent
+# graduate) qualifies whatever grade it carries, and an ordinary posting
+# open to the public qualifies when its lowest grade is at or below this.
+#
+# This used to AND the two, which restricts the search to Pathways alone.
+# Measured against the live site for series 2210 over 30 days: 668 open
+# postings, 9 of them Pathways. A user asking for 5 entry-level IT jobs
+# was being shown a 1.3% slice of the board and told that was all there
+# was.
+#
+# The same filter also sent pay-grade parameters that do nothing. Measured
+# on the same query: 668 results with "pgs=04&pgs=05&pgs=06&pgs=07" and
+# 668 without, and the same for gsl/gsh, pg and PayGradeLow/High. The
+# comment those parameters carried ("05-09 was too wide") described tuning
+# that had never had any effect. Grade is filtered here in Python instead,
+# off the band USAJOBS prints in the salary line.
+ENTRY_LEVEL_MAX_GRADE = 9
+
+# Pay plan, then the band. Not every federal job is GS: a single page of
+# IT results carries "(GS 7-9)", "(GG 7-11)" and "(NF 14)".
+_GRADE_RE = re.compile(
+    r"\b(?:GS|GG|GL|NH|NF|NK|WG|WS|WL|ZP|ZA|AD|CY|ES|SV)[\s-]*"
+    r"(\d{1,2})(?:\s*-\s*(\d{1,2}))?",
+    re.IGNORECASE,
+)
+
+
+def parse_low_grade(text: str) -> int | None:
+    """Lowest numeric pay grade named in a string, or None if there is none.
+
+    The card parser only ever matched `GS\\s*\\d+`, so of the three
+    postings in a real result set carrying "(GG 7-11)", "(GS 7-9)" and
+    "(NF 14)", it read the grade of exactly one.
+    """
+    if not text:
+        return None
+    grades = [int(m.group(1)) for m in _GRADE_RE.finditer(str(text))]
+    return min(grades) if grades else None
+
+
+def is_entry_level_grade(job: dict, cap: int = ENTRY_LEVEL_MAX_GRADE) -> bool:
+    """Whether a posting's lowest grade is at or below `cap`.
+
+    A posting whose grade cannot be read anywhere is kept, not dropped.
+    Dropping it turns an unparsed pay line into a job the user never sees
+    and never learns about, and this tool has already been bitten once by
+    treating "could not read it" as "it is not there".
+    """
+    for field in ("grade", "salary", "title"):
+        low = parse_low_grade(job.get(field, ""))
+        if low is not None:
+            return low <= cap
+    return True
+
+
 # --- USAJOBS occupational series ("job categories") ---------------------
 # Federal IT/cyber roles are all under series 2210 (Information Technology
 # Management). Software/CS-leaning roles are under 1550. Filtering by series
@@ -261,7 +317,8 @@ class UsaJobsSearchTool:
         "short and generic ('Cybersecurity', 'IT Specialist'); do NOT include "
         "cert names — they will be stripped because federal postings don't "
         "index by cert. Use `entry_level=true` for student/early-career roles "
-        "(GS-04 through GS-07 + Pathways)."
+        "(Pathways postings at any grade, plus ordinary postings at "
+        "GS-09 and below)."
     )
     input_schema = {
         "type": "object",
@@ -276,8 +333,9 @@ class UsaJobsSearchTool:
             "days_ago": {"type": "integer", "default": 30,
                          "description": "Posted within the last N days."},
             "entry_level": {"type": "boolean", "default": False,
-                            "description": "GS-04 through GS-07 + Pathways "
-                                           "(Students / Recent Graduates) hiring paths."},
+                            "description": "Pathways (Students / Recent "
+                                           "Graduates) postings at any grade, merged with "
+                                           "ordinary postings at GS-09 and below."},
             "series_codes": {"type": "array", "items": {"type": "string"},
                              "description": "OPM occupational series codes (e.g. ['2210']). "
                                             "Auto-inferred from the query when omitted."},
@@ -401,24 +459,47 @@ class UsaJobsSearchTool:
                 ai_focus=ai_focus,
             )
 
-        # ---- Multi-query merge ----
-        # Run each query variant through the Playwright scrape. Allocate
-        # per-query max so the total stays roughly at max_jobs after dedup.
-        per_query_cap = max(10, (max_jobs // len(queries_to_run)) + 5)
+        # ---- Search passes ----
+        # A pass is a keyword plus whether to restrict to the Pathways
+        # hiring paths. entry_level runs both halves of its definition as
+        # separate passes and merges them, because USAJOBS ANDs its filters:
+        # asking for Pathways and a low grade in one query returns Pathways
+        # postings only, which is nine nationwide.
+        passes: list[tuple[str, bool]] = []
+        for q in queries_to_run:
+            if entry_level:
+                passes.append((q, True))    # Pathways, any grade
+                passes.append((q, False))   # open to all, grade-capped below
+            else:
+                passes.append((q, False))
+
+        def cap_for(pathways: bool) -> int | None:
+            """Grade cap applies only to the non-Pathways half.
+
+            A Pathways posting is entry level by virtue of the hiring path,
+            and several are advertised at GS-11 with promotion potential.
+            Capping those would throw away the best matches the search has.
+            """
+            return ENTRY_LEVEL_MAX_GRADE if (entry_level and not pathways) else None
+
+        # Allocate per-pass max so the total stays roughly at max_jobs
+        # after dedup.
+        per_query_cap = max(10, (max_jobs // len(passes)) + 5)
         merged: list[dict] = []
         seen_urls: set[str] = set()
         per_query_meta: list[dict] = []
         first_url = ""
         total_seen_text = ""
 
-        _log(f"MULTI-QUERY plan: {queries_to_run} (per-query cap={per_query_cap}, "
+        _log(f"SEARCH plan: {passes} (per-pass cap={per_query_cap}, "
              f"target merged max_jobs={max_jobs})")
 
-        for q in queries_to_run:
+        for q, pathways in passes:
             try:
                 partial = self._run_via_playwright(
-                    q, location, per_query_cap, days_ago, entry_level,
+                    q, location, per_query_cap, days_ago, pathways,
                     series_codes, user_certs, raw_query, ai_focus=ai_focus,
+                    grade_cap=cap_for(pathways),
                 )
             except Exception as exc:
                 _log(f"[multi-query] '{q}' FAILED: {exc!r}")
@@ -459,13 +540,14 @@ class UsaJobsSearchTool:
         if location and len(merged) < sparse_threshold:
             _log(f"[multi-query] sparse ({len(merged)} < {sparse_threshold}) "
                  f"with location={location!r}; retrying nationwide")
-            for q in queries_to_run:
+            for q, pathways in passes:
                 if len(merged) >= max_jobs:
                     break
                 try:
                     partial = self._run_via_playwright(
-                        q, "", per_query_cap, days_ago, entry_level,
+                        q, "", per_query_cap, days_ago, pathways,
                         series_codes, user_certs, raw_query, ai_focus=ai_focus,
+                        grade_cap=cap_for(pathways),
                     )
                 except Exception as exc:
                     _log(f"[multi-query] retry '{q}' FAILED: {exc!r}")
@@ -487,11 +569,13 @@ class UsaJobsSearchTool:
         # If multi-query was just one query and we have no merge fallbacks
         # to honor, hand back the direct return so the rich diagnostic
         # fields (dead_links_discarded etc.) survive.
-        if len(queries_to_run) == 1 and len(merged) == 0:
+        if len(passes) == 1 and len(merged) == 0:
+            q, pathways = passes[0]
             try:
                 return self._run_via_playwright(
-                    queries_to_run[0], location, max_jobs, days_ago, entry_level,
+                    q, location, max_jobs, days_ago, pathways,
                     series_codes, user_certs, raw_query, ai_focus=ai_focus,
+                    grade_cap=cap_for(pathways),
                 )
             except Exception as exc:
                 _log(f"[usajobs_search] Playwright failed: {exc}. Browser handoff.")
@@ -523,23 +607,37 @@ class UsaJobsSearchTool:
                      series_codes: list[str], api_key, api_email,
                      user_certs: list[str], raw_query: str,
                      ai_focus: bool = False) -> dict[str, Any]:
-        params: list[tuple[str, str]] = [
+        base: list[tuple[str, str]] = [
             ("Keyword", query),
             ("ResultsPerPage", str(max_jobs)),
             ("DatePosted", str(days_ago)),  # 1-60
         ]
         if location:
-            params.append(("LocationName", location))
-        if entry_level:
-            # GS-04 through GS-07 is the right band for student / early-career
-            # roles (Pathways programs sit here). 05-09 was too wide.
-            params.append(("PayGradeLow", "04"))
-            params.append(("PayGradeHigh", "07"))
-            # Pathways hiring paths: students + recent graduates.
-            params.append(("HiringPath", "student"))
-            params.append(("HiringPath", "graduates"))
+            base.append(("LocationName", location))
         for code in series_codes:
-            params.append(("JobCategoryCode", code))
+            base.append(("JobCategoryCode", code))
+
+        # The API ANDs its filters exactly like the website does, so a
+        # single request asking for both a low grade and a Pathways hiring
+        # path returns Pathways postings alone. That is the bug this whole
+        # change is about, so entry_level is two requests merged by URL:
+        # one grade-capped and open to everyone, one Pathways at any grade.
+        #
+        # PayGradeLow/High are real parameters here even though their
+        # website equivalents were measured to do nothing, so the grade half
+        # is filtered server side on this path and in Python on the scrape
+        # path. Both arrive at the definition in ENTRY_LEVEL_MAX_GRADE.
+        variants: list[list[tuple[str, str]]] = [list(base)]
+        if entry_level:
+            graded = list(base) + [
+                ("PayGradeLow", "01"),
+                ("PayGradeHigh", f"{ENTRY_LEVEL_MAX_GRADE:02d}"),
+            ]
+            pathways = list(base) + [
+                ("HiringPath", "student"),
+                ("HiringPath", "graduates"),
+            ]
+            variants = [graded, pathways]
 
         headers = {
             "Host": "data.usajobs.gov",
@@ -548,22 +646,46 @@ class UsaJobsSearchTool:
             "Accept": "application/json",
         }
 
-        try:
-            resp = requests.get("https://data.usajobs.gov/api/search",
-                                params=params, headers=headers, timeout=15)
-        except requests.RequestException as exc:
-            return {"ok": False, "error": f"USAJOBS API request failed: {exc}"}
+        items: list[dict] = []
+        seen_uris: set[str] = set()
+        for params in variants:
+            try:
+                resp = requests.get("https://data.usajobs.gov/api/search",
+                                    params=params, headers=headers, timeout=15)
+            except requests.RequestException as exc:
+                if items:
+                    # One variant already produced results; a partial answer
+                    # beats discarding them over the second request.
+                    _log(f"[api] variant failed after a good one: {exc}")
+                    continue
+                return {"ok": False,
+                        "error": f"USAJOBS API request failed: {exc}"}
 
-        if resp.status_code != 200:
-            return {"ok": False, "error": f"USAJOBS API HTTP {resp.status_code}",
-                    "body": resp.text[:300]}
+            if resp.status_code != 200:
+                if items:
+                    _log(f"[api] variant returned HTTP {resp.status_code}")
+                    continue
+                return {"ok": False,
+                        "error": f"USAJOBS API HTTP {resp.status_code}",
+                        "body": resp.text[:300]}
 
-        try:
-            data = resp.json()
-        except ValueError:
-            return {"ok": False, "error": "USAJOBS API returned non-JSON"}
+            try:
+                data = resp.json()
+            except ValueError:
+                if items:
+                    continue
+                return {"ok": False, "error": "USAJOBS API returned non-JSON"}
 
-        items = data.get("SearchResult", {}).get("SearchResultItems", []) or []
+            for item in (data.get("SearchResult", {})
+                         .get("SearchResultItems", []) or []):
+                uri = ((item.get("MatchedObjectDescriptor") or {})
+                       .get("PositionURI", ""))
+                if uri and uri in seen_uris:
+                    continue
+                if uri:
+                    seen_uris.add(uri)
+                items.append(item)
+
         listings: list[dict] = []
         for item in items[:max_jobs]:
             d = item.get("MatchedObjectDescriptor", {}) or {}
@@ -632,9 +754,15 @@ class UsaJobsSearchTool:
     # ----- Playwright scrape mode (no API key needed) -----
 
     def _build_url(self, query: str, location: str, days_ago: int,
-                   entry_level: bool, series_codes: list[str],
+                   pathways_only: bool, series_codes: list[str],
                    page_num: int = 1) -> str:
-        """Compose the USAJOBS search URL exactly the way the website does."""
+        """Compose the USAJOBS search URL exactly the way the website does.
+
+        `pathways_only` restricts to the student and recent-graduate hiring
+        paths. It is one half of what entry_level means; the grade half is
+        applied in Python after the fetch, because no URL parameter on this
+        page filters by grade. See ENTRY_LEVEL_MAX_GRADE.
+        """
         parts = [
             f"k={quote_plus(query)}",
             f"l={quote_plus(location)}",
@@ -643,18 +771,18 @@ class UsaJobsSearchTool:
         ]
         for code in series_codes:
             parts.append(f"jc={quote_plus(code)}")
-        if entry_level:
-            for grade in ("04", "05", "06", "07"):
-                parts.append(f"pgs={grade}")
+        if pathways_only:
             parts.append("hp=student")
             parts.append("hp=graduates")
         return "https://www.usajobs.gov/Search/Results?" + "&".join(parts)
 
-    def _run_via_playwright(self, query, location, max_jobs, days_ago, entry_level,
+    def _run_via_playwright(self, query, location, max_jobs, days_ago,
+                            pathways_only,
                             series_codes: list[str],
                             user_certs: list[str],
                             raw_query: str,
-                            ai_focus: bool = False) -> dict[str, Any]:
+                            ai_focus: bool = False,
+                            grade_cap: int | None = None) -> dict[str, Any]:
         """Scrape USAJOBS, then deep-fetch each result's full description and
         STRICTLY enforce series codes by walking additional pages if results
         are filtered out.
@@ -680,8 +808,9 @@ class UsaJobsSearchTool:
         FETCH_WORKERS = 15          # was 10
         OVERALL_BUDGET_S = 240      # was 90
 
-        first_page_url = self._build_url(query, location, days_ago, entry_level,
-                                         series_codes, page_num=1)
+        first_page_url = self._build_url(query, location, days_ago,
+                                         pathways_only, series_codes,
+                                         page_num=1)
         series_set = {str(c) for c in (series_codes or [])}
         stubs: list[dict] = []
         scanned_cards = 0
@@ -690,7 +819,8 @@ class UsaJobsSearchTool:
         t_overall = time.monotonic()
 
         _log(f"START search: query={query!r} location={location!r} "
-             f"max_jobs={max_jobs} entry_level={entry_level} "
+             f"max_jobs={max_jobs} pathways_only={pathways_only} "
+             f"grade_cap={grade_cap} "
              f"series_codes={series_codes} ai_focus={ai_focus}")
 
         # ---------- STAGE A: collect stub cards via Playwright ----------
@@ -714,7 +844,7 @@ class UsaJobsSearchTool:
                         break
 
                     page_url = self._build_url(query, location, days_ago,
-                                               entry_level, series_codes,
+                                               pathways_only, series_codes,
                                                page_num=page_num)
                     t0 = time.monotonic()
                     try:
@@ -940,6 +1070,24 @@ class UsaJobsSearchTool:
              f"{len(fetch_failures)} network failures, "
              f"{len(dropped_series)} dropped off-series")
 
+        # ---------- grade filter ----------
+        # The other half of "entry level", applied here rather than in the
+        # URL because no parameter on the USAJOBS search page filters by
+        # grade; the four this used to send were measured to change nothing.
+        # Runs before scoring so a posting nobody will see is not embedded
+        # and ranked first.
+        dropped_by_grade: list[str] = []
+        if grade_cap is not None:
+            kept = []
+            for job in keepers:
+                if is_entry_level_grade(job, grade_cap):
+                    kept.append(job)
+                else:
+                    dropped_by_grade.append(job.get("title", "?"))
+            _log(f"[grade filter] cap=GS-{grade_cap}: kept {len(kept)} of "
+                 f"{len(keepers)}, dropped {len(dropped_by_grade)}")
+            keepers = kept
+
         # ---------- STAGE C: scoring + ranking ----------
         _log(f"[stage C] EVAL: scoring {len(keepers)} results against resume")
         t_eval = time.monotonic()
@@ -1062,7 +1210,9 @@ class UsaJobsSearchTool:
             "query_sent": query,
             "series_codes": series_codes,
             "series_enforced": bool(series_set),
-            "entry_level": entry_level,
+            "pathways_only": pathways_only,
+            "grade_cap": grade_cap,
+            "dropped_by_grade": dropped_by_grade,
             "ai_focus": ai_focus,
             "ai_designated_count": ai_marker_count,
             "scanned_cards": scanned_cards,
@@ -1368,10 +1518,10 @@ class UsaJobsSearchTool:
         for code in series_codes:
             parts.append(f"jc={quote_plus(code)}")
         if entry_level:
-            # GS-04 through GS-07 is the student / early-career band.
-            for grade in ("04", "05", "06", "07"):
-                parts.append(f"pgs={grade}")
-            # Pathways hiring paths bring in college-student programs.
+            # Pathways hiring paths bring in college-student programs. The
+            # pgs= grade parameters that used to sit here were measured to
+            # change nothing (668 results with them, 668 without), so they
+            # only made the handoff URL look more selective than it was.
             parts.append("hp=student")
             parts.append("hp=graduates")
 

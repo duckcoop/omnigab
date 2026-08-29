@@ -77,8 +77,7 @@ write the final prose answer to the user.
     management / GS-12+ / "experienced" / "lead" roles, OR the request is about \
     AI/ML. Phrasing like "jobs I qualify for", "match my certs", "find me jobs", \
     "for me", "what could I apply to" all mean entry-level — pass \
-    `entry_level=true`. The tool then filters to GS-04 through GS-07 + Pathways \
-    (Students / Recent Graduates).
+    `entry_level=true`. The tool then returns Pathways postings \n    (Students / Recent Graduates) at any grade, merged with ordinary \n    postings at GS-09 and below.
 
     For AI/ML/artificial intelligence/machine learning/data science requests, \
     pass `ai_focus=true` and DO NOT pass `entry_level=true` (federal AI roles \
@@ -250,28 +249,16 @@ filters by series code, but if a clearly-unrelated title slips through \
 `cert_matches` is empty, OMIT it from the user-facing answer and note \
 how many were skipped.
 
-## REQUIRED Chain-of-Thought (<thinking>) block
+## Judging the results
 
-Before the job list, emit ONE `<thinking>` block with one-line entries per \
-job. Keep it tight — long thinking blocks burn tokens. Format:
+Say which posting is the strongest fit and why, in plain prose, as your answer. Useful signals, in rough order:
+  * the hiring path is student / recent graduate / Pathways, which for an     active student means strong eligibility
+  * the posting names a cert the user holds (Security+, A+, Network+)
+  * the gap that shows up across several of them, in one short clause:     missing years, missing clearance, grade too senior
 
-<thinking>
-Job 1 [STRONG/MODERATE/WEAK]: <agency> · Pathways=Y/N · CertsHit=<list or none> · key gap if any
-Job 2 [STRONG/MODERATE/WEAK]: …
-… (one line per job)
-</thinking>
+Do NOT wrap that judgement in `<thinking>` tags. An earlier version of this prompt demanded a `<thinking>` block here, and the app renders anything inside those tags as dimmed reasoning rather than as an answer, so the judgement was greyed out and the user was left with no visible reply at all. Reasoning tags are for working, not for output.
 
-Rules for the thinking line:
-  * `Pathways=Y` if the posting's hiring path is student / recent graduate
-    / Pathways. The user is an active student so Y means strong eligibility.
-  * `CertsHit=` lists the user's certs the posting names (Security+, A+,
-    Network+, etc.). `none` if none.
-  * `key gap` is one short clause — missing years, missing clearance, etc.
-
-After `</thinking>`, output the formatted job list below. ONE thinking \
-block per response, not one per job.
-
-## Format — REQUIRED four lines per job
+## Format
 
 Job search results are rendered for you.
 
@@ -524,15 +511,52 @@ class Agent:
         return text
 
     def _rendered_blocks(self, results: list[ToolResult]) -> str:
-        """Deterministic markdown for every rendered tool result this turn."""
-        blocks = []
+        """Deterministic markdown for the rendered tool results this turn.
+
+        Repeated calls to the same tool are merged into one block and
+        deduplicated by URL. A model that searches, reconsiders, and
+        searches again used to get every result set rendered in full, so a
+        single reply carried the same five postings twice in two different
+        orders. Merging is better than keeping only the last, because two
+        different queries against the same tool each contribute postings
+        the other did not find.
+        """
+        merged: dict[str, dict] = {}
         for result in results:
-            if (result.ok and result.name in self.RENDERED_TOOLS
+            if not (result.ok and result.name in self.RENDERED_TOOLS
                     and isinstance(result.output, dict)):
-                block = job_renderer.render_results(result.output)
-                if block:
-                    blocks.append(block)
-        return "\n\n".join(blocks)
+                continue
+            payload = result.output
+            if result.name not in merged:
+                # Copied, not aliased: the lists below are appended to, and
+                # the tool's own result dict must not grow underneath it.
+                first = dict(payload)
+                first["results"] = list(payload.get("results") or [])
+                first["handoffs"] = list(payload.get("handoffs") or [])
+                merged[result.name] = first
+                continue
+
+            into = merged[result.name]
+            seen = {job.get("url") for job in into["results"] if job.get("url")}
+            for job in payload.get("results") or []:
+                url = job.get("url")
+                if url and url in seen:
+                    continue
+                if url:
+                    seen.add(url)
+                into["results"].append(job)
+
+            handed = {h.get("url") for h in into["handoffs"] if h.get("url")}
+            for handoff in payload.get("handoffs") or []:
+                if handoff.get("url") not in handed:
+                    handed.add(handoff.get("url"))
+                    into["handoffs"].append(handoff)
+
+            into["found"] = len(into["results"])
+
+        blocks = [job_renderer.render_results(payload)
+                  for payload in merged.values()]
+        return "\n\n".join(block for block in blocks if block)
 
     # ----- running out of tool hops -----------------------------------
 

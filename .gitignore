@@ -79,3 +79,13 @@ Desktop.ini
 
 # Runtime-only directories
 models/
+
+# Resume at the repository root. resume_ingest writes baseresume.txt from
+# a baseresume.pdf or .docx dropped beside it, so all three hold the
+# user's real name, address, and phone number. The data/ resume paths
+# above were already ignored for this reason; these were missed because
+# they sit at the root rather than under data/, and the file only appears
+# once someone actually runs the app. Nothing has ever been committed.
+baseresume.txt
+baseresume.pdf
+baseresume.docx

@@ -77,7 +77,9 @@ write the final prose answer to the user.
     management / GS-12+ / "experienced" / "lead" roles, OR the request is about \
     AI/ML. Phrasing like "jobs I qualify for", "match my certs", "find me jobs", \
     "for me", "what could I apply to" all mean entry-level — pass \
-    `entry_level=true`. The tool then returns Pathways postings \n    (Students / Recent Graduates) at any grade, merged with ordinary \n    postings at GS-09 and below.
+    `entry_level=true`. The tool then returns Pathways postings
+    (Students / Recent Graduates) at any grade, merged with
+    ordinary postings at GS-09 and below.
 
     For AI/ML/artificial intelligence/machine learning/data science requests, \
     pass `ai_focus=true` and DO NOT pass `entry_level=true` (federal AI roles \
@@ -98,6 +100,12 @@ write the final prose answer to the user.
     a job search has already returned results: the browser links are part of \
     that result and are shown to the user for you, and calling it opens a tab \
     on their desktop that they did not ask for.
+- User asks for jobs WITHOUT saying federal or private
+  ("find me 5 jobs", "help me find some jobs", "any openings?"):
+    → call BOTH: `usajobs_search` first, then
+    `job_boards_search`. An unqualified request is not a request
+    for federal listings only, and answering it from one source
+    silently decides for the user. Both lists are rendered for you.
 - User asks to "just open" LinkedIn / Glassdoor / Indeed:
     → call `open_in_browser` with the appropriate `site` template.
 - User asks about their files, docs, uploaded resume, IT runbooks:
@@ -153,6 +161,11 @@ Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"Artificial 
 
 User: look for experimental cutting edge ML positions
 Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"Machine Learning","ai_focus":true,"max_jobs":10}}</tool_call>
+
+User: find me 5 jobs please
+Assistant: <tool_call>{"name":"usajobs_search","arguments":{"query":"IT Specialist","entry_level":true,"max_jobs":5}}</tool_call>
+(then, after the result comes back)
+Assistant: <tool_call>{"name":"job_boards_search","arguments":{"query":"IT Specialist","limit":5}}</tool_call>
 
 User: find me some help desk jobs in Austin
 Assistant: <tool_call>{"name":"job_boards_search","arguments":{"query":"help desk","location":"Austin, TX"}}</tool_call>

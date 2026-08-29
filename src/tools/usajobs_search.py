@@ -62,6 +62,44 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 RESULTS_DIR = DATA_DIR / "usajobs_runs"
 
+# --- scrape selectors ---------------------------------------------------
+# Declared once, because they are the part of this file that rots without
+# anyone touching it: USAJOBS can redesign its result page at any time and
+# the code keeps running, just against markup that no longer exists.
+#
+# RESULT_CARD is the container for one posting. It was
+# "#search-results .bg-white.p-4" until USAJOBS moved off those Tailwind
+# utility classes, at which point the scraper matched nothing and every
+# search returned zero results while the site itself held hundreds.
+#
+# POSTING_LINK is deliberately independent of RESULT_CARD. Every posting
+# links to /job/<id> whatever the surrounding markup looks like, so it is
+# the check that tells a genuinely empty search apart from a card selector
+# that has stopped matching. See _scrape_integrity_error.
+RESULT_CARD = "#search-results > div.page-section"
+POSTING_LINK = "#search-results a[href*='/job/']"
+CARD_TITLE_LINK = "h2 a, h3 a"
+
+
+def _scrape_integrity_error(card_count: int, posting_links: int,
+                            page_url: str) -> str | None:
+    """Message describing selector drift, or None when the scrape is sound.
+
+    A search with no matches and a search we can no longer read both end
+    with zero cards, and only one of them means "there are no jobs". The
+    difference is whether the page still holds posting links. Returning
+    ok/found=0 for the second case makes the app assert something no code
+    confirmed, which is the failure this check exists to prevent.
+    """
+    if card_count or not posting_links:
+        return None
+    return (f"USAJOBS returned a results page holding {posting_links} "
+            f"postings, but the scraper matched 0 result cards with "
+            f"{RESULT_CARD!r}. That selector no longer matches the site's "
+            f"markup, so this is a scraper fault and not an empty search. "
+            f"Open {page_url} to confirm, and update RESULT_CARD in "
+            f"src/tools/usajobs_search.py.")
+
 
 # --- USAJOBS occupational series ("job categories") ---------------------
 # Federal IT/cyber roles are all under series 2210 (Information Technology
@@ -648,6 +686,7 @@ class UsaJobsSearchTool:
         stubs: list[dict] = []
         scanned_cards = 0
         count_text = ""
+        drift_error: str | None = None
         t_overall = time.monotonic()
 
         _log(f"START search: query={query!r} location={location!r} "
@@ -688,8 +727,7 @@ class UsaJobsSearchTool:
                         # Wait specifically for the result container to appear.
                         try:
                             search_page.wait_for_selector(
-                                "#search-results .bg-white.p-4",
-                                timeout=10000,
+                                RESULT_CARD, timeout=10000,
                             )
                         except Exception:
                             pass
@@ -699,12 +737,25 @@ class UsaJobsSearchTool:
                         break
 
                     elapsed = time.monotonic() - t0
-                    cards = search_page.locator(
-                        "#search-results .bg-white.p-4").all()
+                    cards = search_page.locator(RESULT_CARD).all()
                     _log(f"  [stage A] page {page_num} loaded in {elapsed:.1f}s, "
                          f"{len(cards)} cards")
                     if not cards:
-                        # Search exhausted — no point fetching page+1.
+                        # Either the search is exhausted or the card selector
+                        # has stopped matching. Count posting links, which do
+                        # not depend on the card markup, to tell those apart
+                        # before treating this as "no jobs".
+                        if page_num == 1:
+                            try:
+                                posting_links = search_page.locator(
+                                    POSTING_LINK).count()
+                            except Exception:
+                                posting_links = 0
+                            drift_error = _scrape_integrity_error(
+                                0, posting_links, page_url)
+                            if drift_error:
+                                _log(f"  [stage A] SELECTOR DRIFT: "
+                                     f"{posting_links} posting links, 0 cards")
                         break
 
                     # USAJOBS default page size is 25. If page 1 returned
@@ -755,6 +806,23 @@ class UsaJobsSearchTool:
         _log(f"[stage A] DONE. Scanned {scanned_cards} cards, "
              f"collected {len(stubs)} stubs in "
              f"{time.monotonic() - t_overall:.1f}s")
+
+        # Selector drift is reported as a failure, never as an empty result.
+        # The tool used to return ok/found=0 here, the agent read that as
+        # "there are no jobs", and it told the user so while USAJOBS was
+        # holding several hundred matching postings. A tool that cannot read
+        # its source has to say that, because nothing downstream can tell
+        # the difference once the answer is a zero.
+        if drift_error:
+            return {
+                "ok": False,
+                "mode": "playwright_scrape",
+                "source": "usajobs.gov",
+                "error": drift_error,
+                "raw_query": raw_query,
+                "query_sent": query,
+                "url": first_page_url,
+            }
 
         # ---------- STAGE B: parallel deep-fetch via requests ----------
         keepers: list[dict] = []
@@ -1171,7 +1239,7 @@ class UsaJobsSearchTool:
         title = ""
         href = ""
         try:
-            link = card.locator("h2 a, h3 a").first
+            link = card.locator(CARD_TITLE_LINK).first
             title = (link.inner_text() or "").strip()
             href = link.get_attribute("href") or ""
         except Exception:

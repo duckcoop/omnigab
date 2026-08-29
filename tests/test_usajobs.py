@@ -36,3 +36,11 @@ def test_usajobs_search_runs_and_reports_ok(usajobs_tool):
         "ai_focus": False,
     })
     assert result.get("ok")
+    # `ok` alone is not enough, and this test proved it: the scraper spent
+    # some time matching a stale selector, finding nothing, and reporting
+    # ok=True with found=0, and this file passed throughout. A federal IT
+    # search with a 30 day window has hundreds of open postings, so zero
+    # results means the tool could not read the page.
+    assert result.get("found", 0) > 0, (
+        f"USAJOBS reported no postings at all: {result.get('error') or result}"
+    )

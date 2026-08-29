@@ -289,3 +289,71 @@ def assess(job_paths: list[str], profile: set[str]) -> Eligibility:
         "conditional", [], paths,
         "open to " + ", ".join(PATH_LABELS[key].lower() for key in paths)
         + ", none of which you have claimed")
+
+
+# Paths that exist precisely to hire people with no career history yet.
+# Matching one is the strongest signal available that a posting wants
+# somebody at the start rather than somebody with eight years in.
+EARLY_CAREER_PATHS = frozenset({"students", "recent_graduates"})
+
+STRONG, POSSIBLE, LONG_SHOT = "Strong fit", "Possible", "Long shot"
+
+
+def fit(job: dict, verdict: Eligibility, grade_cap: int | None = None,
+        low_grade: int | None = None) -> tuple[str, list[str]]:
+    """A band and the facts behind it, replacing the similarity percentage.
+
+    A band rather than a number on purpose. The thing it replaced printed
+    "20%" and "29%" for two postings whose real difference was that the
+    user could apply to one of them, which is a precision the method never
+    had and a distinction it never made. Three coarse buckets with their
+    reasons attached claim only what the inputs support.
+
+    Every input here is a fact read off the posting: the hiring path, the
+    advertised grade, and which of the user's certs the text names. None of
+    it is a similarity score.
+    """
+    reasons: list[str] = []
+    score = 0
+
+    if verdict.verdict == "conditional":
+        # No claimed path matched, so applying means finding a route in.
+        return LONG_SHOT, [verdict.reason]
+
+    if verdict.matched:
+        reasons.append(verdict.reason)
+        if any(key in EARLY_CAREER_PATHS for key in verdict.matched):
+            score += 2
+        elif "public" in verdict.matched:
+            score += 1
+        else:
+            score += 2
+
+    if low_grade is not None and grade_cap is not None:
+        if low_grade <= grade_cap:
+            score += 2
+            reasons.append(f"opens at GS-{low_grade:02d}")
+        else:
+            score -= 2
+            reasons.append(f"starts at GS-{low_grade:02d}, above the "
+                           f"GS-{grade_cap:02d} you asked for")
+
+    certs = [str(c) for c in (job.get("cert_matches") or []) if c]
+    if certs:
+        score += min(len(certs), 2)
+        reasons.append("names your " + ", ".join(certs))
+
+    if job.get("missing_clearance"):
+        score -= 2
+        reasons.append(f"needs a {job['missing_clearance']} clearance")
+
+    missing_certs = [str(c) for c in (job.get("missing_certs") or []) if c]
+    if missing_certs:
+        score -= 1
+        reasons.append("wants " + ", ".join(missing_certs[:3]))
+
+    if score >= 4:
+        return STRONG, reasons
+    if score >= 1:
+        return POSSIBLE, reasons
+    return LONG_SHOT, reasons

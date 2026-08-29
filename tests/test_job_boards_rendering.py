@@ -252,3 +252,65 @@ def test_different_tools_still_render_their_own_block():
     assert block.count("Found ") == 2
     assert "Apply on USAJOBS" in block
     assert "View on Amazon Jobs" in block
+
+
+# ------------------------------------------------------ fit over relevance
+
+FIT_JOB = {
+    "title": "IT Cybersecurity Specialist (PLCYPLN) - CES Recent Graduate",
+    "agency": "Defense Information Systems Agency",
+    "location": "Fort Meade, Maryland", "salary": "$57,736 (GG 7-11)",
+    "series_code": "2210", "match_percent": 20,
+    "fit": "Strong fit",
+    "fit_reasons": ["open to recent graduates", "opens at GS-07"],
+    "url": "https://www.usajobs.gov/job/880946700",
+}
+FIT_PAYLOAD = {
+    "ok": True, "found": 1, "location": "(anywhere)", "results": [FIT_JOB],
+    "handoffs": [],
+    "hidden_ineligible": [
+        {"title": "IT SPECIALIST (SYSADMIN)",
+         "reason": "open only to federal employees - competitive service"},
+    ],
+}
+
+
+def test_the_fit_band_and_its_reasons_are_the_headline():
+    block = job_renderer.render_results(FIT_PAYLOAD)
+    assert "Strong fit · open to recent graduates · opens at GS-07" in block
+
+
+def test_the_similarity_number_survives_but_is_labelled_as_text_overlap():
+    """The user asked for both. Labelling is what stops it being read as fit.
+
+    It used to print "Match: 20%", which reads as an answer to "should I
+    apply" for a number that only measured shared vocabulary.
+    """
+    block = job_renderer.render_results(FIT_PAYLOAD)
+    assert "Relevance: 20% resume text overlap" in block
+    assert "Match: 20%" not in block
+
+
+def test_hidden_postings_are_counted_and_explained_in_the_footer():
+    """A shorter list with no explanation is the silent zero again."""
+    block = job_renderer.render_results(FIT_PAYLOAD)
+    assert "1 posting(s) hidden" in block
+    assert "federal employees - competitive service" in block
+
+
+def test_the_digest_hands_the_model_the_band_not_the_percentage():
+    """The model repeats what the digest says.
+
+    It used to be told "29% match" for a vacancy the user was barred from.
+    """
+    digest = job_renderer.summarize_for_model(FIT_PAYLOAD)
+    assert "Strong fit: open to recent graduates" in digest
+    assert "20%" not in digest
+    assert "hidden" in digest
+
+
+def test_a_board_posting_with_no_fit_falls_back_to_relevance():
+    """job_boards results carry no eligibility, and must still render."""
+    block = job_renderer.render_results(BOARD_PAYLOAD)
+    assert "Strong fit" not in block
+    assert "**1. IT Specialist (Data Center Technician)**" in block

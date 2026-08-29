@@ -38,6 +38,10 @@ from urllib.parse import quote_plus
 import requests
 from bs4 import BeautifulSoup
 
+from jobs.eligibility import (
+    LONG_SHOT, POSSIBLE, STRONG, assess, fit,
+)
+
 
 def _log(msg: str) -> None:
     """Verbose logger. Goes to stdout (which the desktop_app captures and
@@ -473,6 +477,13 @@ class UsaJobsSearchTool:
             else:
                 passes.append((q, False))
 
+        # Reference grade for the fit band, independent of filtering. The
+        # Pathways pass must not filter on grade, but a GS-12 Pathways
+        # posting is still a worse bet for a student than a GS-07 one, and
+        # without this the band had no grade input for exactly the postings
+        # the user is most eligible for.
+        band_cap = ENTRY_LEVEL_MAX_GRADE if entry_level else None
+
         def cap_for(pathways: bool) -> int | None:
             """Grade cap applies only to the non-Pathways half.
 
@@ -499,7 +510,7 @@ class UsaJobsSearchTool:
                 partial = self._run_via_playwright(
                     q, location, per_query_cap, days_ago, pathways,
                     series_codes, user_certs, raw_query, ai_focus=ai_focus,
-                    grade_cap=cap_for(pathways),
+                    grade_cap=cap_for(pathways), band_cap=band_cap,
                 )
             except Exception as exc:
                 _log(f"[multi-query] '{q}' FAILED: {exc!r}")
@@ -547,7 +558,7 @@ class UsaJobsSearchTool:
                     partial = self._run_via_playwright(
                         q, "", per_query_cap, days_ago, pathways,
                         series_codes, user_certs, raw_query, ai_focus=ai_focus,
-                        grade_cap=cap_for(pathways),
+                        grade_cap=cap_for(pathways), band_cap=band_cap,
                     )
                 except Exception as exc:
                     _log(f"[multi-query] retry '{q}' FAILED: {exc!r}")
@@ -575,7 +586,7 @@ class UsaJobsSearchTool:
                 return self._run_via_playwright(
                     q, location, max_jobs, days_ago, pathways,
                     series_codes, user_certs, raw_query, ai_focus=ai_focus,
-                    grade_cap=cap_for(pathways),
+                    grade_cap=cap_for(pathways), band_cap=band_cap,
                 )
             except Exception as exc:
                 _log(f"[usajobs_search] Playwright failed: {exc}. Browser handoff.")
@@ -583,6 +594,15 @@ class UsaJobsSearchTool:
                     clean_query, location, days_ago, entry_level,
                     series_codes, user_certs, raw_query, ai_focus=ai_focus,
                 )
+
+        # Each pass ranked its own results, and the merge above appends them
+        # in pass order, so without this a Long shot from the Pathways pass
+        # sits above a Possible from the open one purely because of which
+        # query found it first.
+        band_order = {STRONG: 0, POSSIBLE: 1, LONG_SHOT: 2}
+        merged.sort(key=lambda j: (band_order.get(j.get("fit"), 1),
+                                   -len(j.get("cert_matches") or []),
+                                   -(j.get("match_percent") or 0)))
 
         return {
             "ok": True,
@@ -782,7 +802,8 @@ class UsaJobsSearchTool:
                             user_certs: list[str],
                             raw_query: str,
                             ai_focus: bool = False,
-                            grade_cap: int | None = None) -> dict[str, Any]:
+                            grade_cap: int | None = None,
+                            band_cap: int | None = None) -> dict[str, Any]:
         """Scrape USAJOBS, then deep-fetch each result's full description and
         STRICTLY enforce series codes by walking additional pages if results
         are filtered out.
@@ -1088,6 +1109,29 @@ class UsaJobsSearchTool:
                  f"{len(keepers)}, dropped {len(dropped_by_grade)}")
             keepers = kept
 
+        # ---------- eligibility ----------
+        # Drops the postings the user cannot apply to, and marks the ones
+        # whose audience they have not claimed. Runs before scoring for the
+        # same reason the grade filter does: a dead end should not be
+        # embedded, ranked, and then shown at the top.
+        hidden_ineligible: list[dict] = []
+        profile = set(self._job_profile())
+        kept = []
+        for job in keepers:
+            verdict = assess(job.get("hiring_paths") or [], profile)
+            job["eligibility"] = verdict.verdict
+            job["eligibility_reason"] = verdict.reason
+            job["hiring_paths"] = verdict.paths
+            if verdict.blocked:
+                hidden_ineligible.append({"title": job.get("title", "?"),
+                                          "reason": verdict.reason})
+                continue
+            kept.append(job)
+        if hidden_ineligible:
+            _log(f"[eligibility] hid {len(hidden_ineligible)} of "
+                 f"{len(keepers)} the user cannot apply to")
+        keepers = kept
+
         # ---------- STAGE C: scoring + ranking ----------
         _log(f"[stage C] EVAL: scoring {len(keepers)} results against resume")
         t_eval = time.monotonic()
@@ -1151,15 +1195,38 @@ class UsaJobsSearchTool:
                 job["ai_designated"] = True
                 ai_marker_count += 1
 
+        # ---- Fit band ----
+        # Replaces match_percent as the headline. Computed after stage C so
+        # the cert matches and the skills gap it fills are available, and
+        # before ranking so it can drive the order.
+        #
+        # band_cap, not grade_cap: the Pathways pass deliberately runs with
+        # no grade filter, and scoring it with no grade reference at all
+        # left the postings the user is most eligible for unable to reach
+        # "Strong fit" on any input.
+        for job in keepers:
+            verdict = assess(job.get("hiring_paths") or [], profile)
+            band, reasons = fit(
+                job, verdict, grade_cap=band_cap,
+                low_grade=parse_low_grade(job.get("grade", ""))
+                or parse_low_grade(job.get("salary", "")),
+            )
+            job["fit"] = band
+            job["fit_reasons"] = reasons
+
         # Rank:
         #   1. AI-focus mode bumps (AI)/(AIML)/(ML) titles to the top.
-        #   2. More cert matches first.
-        #   3. Higher resume-match-percent first.
-        #   4. Salary-bearing postings above silent ones.
+        #   2. Fit band: can I get this job, ahead of does it use my words.
+        #   3. More cert matches first.
+        #   4. Higher resume-relevance first, as a tie-break only.
+        #   5. Salary-bearing postings above silent ones.
+        band_order = {STRONG: 0, POSSIBLE: 1, LONG_SHOT: 2}
+
         def sort_key(j):
             ai_bonus = 0 if (ai_focus and j.get("ai_designated")) else 1
             return (
                 ai_bonus,
+                band_order.get(j.get("fit"), 1),
                 -len(j.get("cert_matches", [])),
                 -(j.get("match_percent") or 0),
                 0 if j.get("salary") else 1,
@@ -1199,6 +1266,14 @@ class UsaJobsSearchTool:
                 "missing_skills": j.get("missing_skills"),
                 "missing_clearance": j.get("missing_clearance"),
                 "ai_designated": j.get("ai_designated"),
+                # Eligibility and fit replace match_percent as the thing the
+                # user reads first. match_percent survives as a labelled
+                # relevance figure rather than as a claim about fit.
+                "fit": j.get("fit"),
+                "fit_reasons": j.get("fit_reasons"),
+                "eligibility": j.get("eligibility"),
+                "eligibility_reason": j.get("eligibility_reason"),
+                "hiring_paths": j.get("hiring_paths"),
                 "url": j.get("url", ""),
             })
 
@@ -1213,6 +1288,7 @@ class UsaJobsSearchTool:
             "pathways_only": pathways_only,
             "grade_cap": grade_cap,
             "dropped_by_grade": dropped_by_grade,
+            "hidden_ineligible": hidden_ineligible,
             "ai_focus": ai_focus,
             "ai_designated_count": ai_marker_count,
             "scanned_cards": scanned_cards,
@@ -1322,6 +1398,17 @@ class UsaJobsSearchTool:
                 if "accepting applications" in body_text_lower:
                     status = "open"
         stub["status"] = status
+
+        # --- Who may apply ------------------------------------------------
+        # The one hard gate on a federal posting, stated in plain text on
+        # the page this function is already holding. It was being thrown
+        # away, which is how a vacancy open only to current federal
+        # employees came to be ranked as the user's best match.
+        try:
+            from jobs.eligibility import extract_hiring_paths
+            stub["hiring_paths"] = extract_hiring_paths(soup)
+        except Exception:
+            stub["hiring_paths"] = []
 
         # --- Description + qualifications --------------------------------
         summary_txt = text_of("#summary") or text_of("section[aria-labelledby*='summary']")
@@ -1587,6 +1674,23 @@ class UsaJobsSearchTool:
                 self._cached_resume_vector = None
         else:
             self._cached_resume_vector = None
+
+    @staticmethod
+    def _job_profile() -> list[str]:
+        """Hiring paths the user has claimed, from the Settings tab.
+
+        Read per search rather than cached, so ticking a box takes effect
+        on the next question instead of the next app restart. Falls back to
+        the public path alone, which is what everyone has, because a
+        failure to read a settings file must not start hiding jobs.
+        """
+        try:
+            import config
+            return config.load_job_profile()
+        except Exception as exc:
+            _log(f"[eligibility] could not read the profile ({exc}); "
+                 f"assuming public postings only")
+            return ["public"]
 
     def _match_percent(self, job_text: str) -> int | None:
         if not job_text or self._cached_resume_vector is None or self.embedder is None:

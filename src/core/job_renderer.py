@@ -61,18 +61,42 @@ def _source_errors(errors: Any) -> str:
     return f"These sources failed and returned nothing: {names}."
 
 
-def _match_line(job: dict) -> str:
-    """Match percent, plus series code when the source has one.
+def _fit_line(job: dict) -> str:
+    """The headline verdict: a band and the facts behind it.
 
-    Series codes are a federal concept. Printing "Series ?" on an Amazon
-    posting is noise, so the segment is omitted when absent.
+    This replaced a "Match: 20%" line computed from embedding similarity
+    between the resume and the job text. Two postings scored 20% and 29%,
+    and the real difference between them was that the user could apply to
+    one and not the other, which similarity cannot see and a percentage
+    implies it measured. The band claims only what its inputs support and
+    shows them.
+    """
+    band = _clean(job.get("fit"), "")
+    if not band:
+        return ""
+    reasons = job.get("fit_reasons") or []
+    if reasons:
+        return f"{band} · " + " · ".join(str(r) for r in reasons)
+    return band
+
+
+def _relevance_line(job: dict) -> str:
+    """The old similarity number, kept but labelled as what it is.
+
+    Useful as a rough topical signal, misleading as a fit score. Naming it
+    "relevance" and saying it is text overlap stops it being read as an
+    answer to "should I apply".
     """
     raw = job.get("match_percent")
-    match = "n/a" if raw is None else f"{raw}%"
     series = _clean(job.get("series_code"), "")
+    parts = []
+    if raw is not None:
+        parts.append(f"Relevance: {raw}% resume text overlap")
+    # Series codes are a federal concept. Printing "Series ?" on an Amazon
+    # posting is noise, so the segment is omitted when absent.
     if series:
-        return f"Match: {match} · Series {series}"
-    return f"Match: {match}"
+        parts.append(f"Series {series}")
+    return " · ".join(parts)
 
 
 def _gap_line(job: dict) -> str:
@@ -100,8 +124,13 @@ def render_job(job: dict, index: int) -> str:
     lines = [
         f"**{index}. {title}**",
         f"{agency} · {location} · {salary}",
-        _match_line(job),
     ]
+    # Fit first, because it is the answer to the question the user asked.
+    # Relevance sits under it, labelled, for the cases where topical
+    # closeness is still worth knowing.
+    for line in (_fit_line(job), _relevance_line(job)):
+        if line:
+            lines.append(line)
 
     certs = _join(job.get("cert_matches"))
     if certs:
@@ -173,6 +202,15 @@ def render_results(payload: dict, limit: int = 10) -> str:
     if source_errors:
         footer_bits.append(source_errors)
 
+    # Postings the user cannot apply to are dropped, never silently. A
+    # shorter list with no explanation is the same failure as a zero with
+    # no explanation.
+    hidden = payload.get("hidden_ineligible") or []
+    if hidden:
+        footer_bits.append(
+            f"{len(hidden)} posting(s) hidden: you cannot apply "
+            f"({hidden[0].get('reason', 'restricted audience')}).")
+
     # Boards that prohibit automation return a prefilled search link
     # instead of listings. Surfacing them here is the whole point: the
     # user still gets to those results, just in their own browser.
@@ -227,10 +265,23 @@ def summarize_for_model(payload: dict, limit: int = 10) -> str:
     for i, job in enumerate(results[:limit], 1):
         title = _clean(job.get("title"), "untitled")
         agency = _clean(job.get("agency"), "unknown agency")
-        raw = job.get("match_percent")
-        match = "unscored" if raw is None else f"{raw}% match"
+        # Fit, not the similarity score. The model repeats whatever the
+        # digest tells it, and it used to be handed "29% match" for a
+        # vacancy the user was not allowed to apply for.
+        band = _clean(job.get("fit"), "")
+        reasons = job.get("fit_reasons") or []
+        if band:
+            note = band + (": " + "; ".join(str(r) for r in reasons)
+                           if reasons else "")
+        else:
+            raw = job.get("match_percent")
+            note = "unscored" if raw is None else f"{raw}% text relevance"
         certs = _join(job.get("cert_matches"))
         cert_note = f", certs matched: {certs}" if certs else ""
-        lines.append(f"{i}. {title} at {agency}, {match}{cert_note}")
+        lines.append(f"{i}. {title} at {agency} - {note}{cert_note}")
 
+    hidden = payload.get("hidden_ineligible") or []
+    if hidden:
+        lines.append(f"{len(hidden)} further posting(s) were hidden because "
+                     f"the user cannot apply to them; say so if it matters.")
     return "\n".join(lines)

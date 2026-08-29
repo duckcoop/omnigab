@@ -243,3 +243,81 @@ def test_live_posting_audiences(job_id, expected):
         f"job {job_id} parsed as {paths}. USAJOBS may have changed the "
         f"'This job is open to' markup again."
     )
+
+
+# ------------------------------------------------------------- fit bands
+
+from jobs.eligibility import (  # noqa: E402  (grouped with its own tests)
+    LONG_SHOT, POSSIBLE, STRONG, fit,
+)
+
+
+def _fit(job=None, paths=("recent_graduates",), profile=STUDENT,
+         cap=9, low=7):
+    verdict = assess(list(paths), set(profile))
+    return fit(dict(job or {}), verdict, grade_cap=cap, low_grade=low)
+
+
+def test_an_early_career_path_at_a_low_grade_is_a_strong_fit():
+    """The posting the old scorer ranked below two it could not apply to."""
+    band, reasons = _fit()
+    assert band == STRONG
+    assert "open to recent graduates" in reasons
+    assert "opens at GS-07" in reasons
+
+
+def test_a_grade_above_the_cap_is_a_long_shot_even_when_open_to_you():
+    """The $143,913 NF-14 the user called out as obviously not entry level."""
+    band, reasons = _fit(paths=("public", "students"), low=14)
+    assert band == LONG_SHOT
+    assert any("above the GS-09" in r for r in reasons)
+
+
+def test_a_path_you_have_not_claimed_is_always_a_long_shot():
+    """No amount of cert overlap makes a vacancy you cannot enter a good bet."""
+    band, reasons = _fit({"cert_matches": ["Security+", "A+"]},
+                         paths=("federal_competitive", "veterans"))
+    assert band == LONG_SHOT
+    assert "none of which you have claimed" in reasons[0]
+
+
+def test_matched_certs_raise_the_band_and_are_named():
+    band, reasons = _fit({"cert_matches": ["Security+"]},
+                         paths=("public",), low=9)
+    assert band == STRONG
+    assert "names your Security+" in reasons
+
+
+def test_a_clearance_you_lack_lowers_the_band_and_says_so():
+    plain, _ = _fit()
+    guarded, reasons = _fit({"missing_clearance": "Top Secret"})
+    assert plain == STRONG and guarded == POSSIBLE
+    assert "needs a Top Secret clearance" in reasons
+
+
+def test_open_to_everyone_is_possible_rather_than_strong():
+    """"Anyone may apply" is the absence of a barrier, not a reason to.
+
+    A posting open to the public at an entry grade with nothing tying it
+    to this user is a fair bet, not a strong one. Reserving the top band
+    for postings that name a path the user holds is what stops every
+    result being a Strong fit, which would be the percentage problem back
+    in three words.
+    """
+    assert _fit(paths=("public",), profile=PUBLIC_ONLY)[0] == POSSIBLE
+
+
+def test_every_band_carries_its_reasons():
+    """A band with no reasons is the percentage problem again, coarser."""
+    for kwargs in ({}, {"low": 14}, {"paths": ("federal_competitive",),
+                                     "profile": PUBLIC_ONLY}):
+        band, reasons = _fit(**kwargs)
+        assert band in (STRONG, POSSIBLE, LONG_SHOT)
+        assert reasons, f"{band} explained nothing"
+
+
+def test_no_grade_reference_still_bands_on_eligibility():
+    """The Pathways pass runs with no grade filter by design."""
+    band, reasons = _fit(cap=None, low=None)
+    assert band in (POSSIBLE, STRONG)
+    assert "open to recent graduates" in reasons

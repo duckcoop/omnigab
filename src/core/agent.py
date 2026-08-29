@@ -298,6 +298,29 @@ MAX_TOOL_HOPS = 4
 # the system prompt and history inside an 8192-token context.
 MAX_OBSERVATION_CHARS = 12000
 
+# Appended to the scratch when the hop budget runs out, so the model gets
+# one turn to answer from what it already gathered.
+#
+# Sent with role "user" rather than "system" on purpose: chat templates
+# vary in whether they accept a second system message mid-conversation,
+# and several silently drop it, which would turn this into a no-op that is
+# invisible until someone reads the rendered prompt.
+#
+# The last sentence is not decoration. A tool that fails and a tool that
+# legitimately finds nothing both end with an empty result list, and the
+# model reaching for the friendlier reading of that is how the app came to
+# tell users there were no federal jobs while USAJOBS held several hundred.
+FINAL_ANSWER_NUDGE = (
+    "Your tool budget for this turn is spent. Do not call another tool. "
+    "Answer now, using only the tool results above. If they did not "
+    "produce what the user asked for, say so plainly, say what you did "
+    "find, and suggest the next step. If a tool reported an error, report "
+    "the error; never describe a failed search as one that found nothing."
+)
+# Every generation stops before this many trailing characters so a
+# partially arrived "<tool_call>" tag is never shown to the user.
+_TAG_HOLDBACK = len("<tool_call>")
+
 
 def _extract_balanced_json(text: str, start_idx: int) -> tuple[dict | None, int]:
     """Walk braces from `start_idx` (must point at '{') and return the
@@ -490,6 +513,55 @@ class Agent:
                     blocks.append(block)
         return "\n\n".join(blocks)
 
+    # ----- running out of tool hops -----------------------------------
+
+    def _closing_messages(self, user_msg: str, scratch: list[dict]) -> list[dict]:
+        """Prompt for the final, tool-free pass after the budget is spent."""
+        closing = list(scratch)
+        closing.append({"role": "user", "content": FINAL_ANSWER_NUDGE})
+        return self._build_messages(user_msg, closing)
+
+    @staticmethod
+    def _visible_answer(buffer: str) -> str:
+        """Model output with reasoning tags normalized and any tool call cut.
+
+        Splitting at the opening tag rather than stripping the pair matters
+        here: the budget is spent, so a tool call in this buffer is never
+        going to run, and everything after it is the model talking about
+        work that will not happen.
+        """
+        return normalize_reasoning_tags(buffer).split("<tool_call>", 1)[0]
+
+    def _final_answer(self, gen, user_msg: str, scratch: list[dict],
+                      last_raw: str = "") -> str:
+        """Answer built from the tool results, after the hops are exhausted.
+
+        Without this the loop fell out of `for ... else` and the turn ended
+        with whatever the model happened to say before its last tool call,
+        which is usually a sentence announcing the call ("Let me try a
+        broader keyword:"). The streaming path was worse: it emitted
+        "[stopped: tool hop limit reached]" and no answer at all, so four
+        successful tool calls could produce nothing a user could read.
+
+        One extra generation is the cost. It buys a turn where the model
+        can only summarise, which is exactly what is missing at this point.
+        """
+        try:
+            prompt = gen.format_messages(self._closing_messages(user_msg, scratch))
+            answer = _strip_tool_artifacts(
+                self._visible_answer(gen.generate_raw(prompt))).strip()
+        except Exception as exc:
+            # A failed closing pass must not lose the turn. Fall back to
+            # whatever the model last said rather than raising out of a
+            # branch the caller reached by running normally.
+            audit_log("agent.final_answer", status="error",
+                      input_summary=user_msg, detail={"error": str(exc)})
+            answer = ""
+        if answer:
+            return answer
+        return (_strip_tool_artifacts(normalize_reasoning_tags(last_raw)).strip()
+                or "(stopped: tool hop limit reached)")
+
     # ----- synchronous turn (tests, CLI) ------------------------------
 
     def run(self, user_msg: str) -> AgentTurn:
@@ -527,9 +599,7 @@ class Agent:
                 "content": self._observation_payload(result),
             })
         else:
-            turn.answer = (_strip_tool_artifacts(
-                normalize_reasoning_tags(last_raw)).strip()
-                or "(stopped: tool hop limit reached)")
+            turn.answer = self._final_answer(gen, user_msg, scratch, last_raw)
 
         rendered = self._rendered_blocks(turn.tool_results)
         if rendered:
@@ -625,7 +695,35 @@ class Agent:
             scratch.append({"role": "assistant", "content": buffer})
             scratch.append({"role": "tool", "name": call.name, "content": preview})
         else:
-            yield {"type": "token", "text": "\n[stopped: tool hop limit reached]"}
+            # Budget spent. Stream one tool-free pass so the user gets an
+            # answer assembled from what the tools actually returned. This
+            # branch used to emit the line below and stop, which meant four
+            # successful tool calls could end the turn with no answer.
+            buffer = ""
+            yielded_up_to = 0
+            try:
+                prompt = gen.format_messages(
+                    self._closing_messages(user_msg, scratch))
+                async for token in gen.stream_async(prompt):
+                    buffer += token
+                    visible = self._visible_answer(buffer)
+                    # Hold back the tail so a half-arrived "<tool_call>"
+                    # never reaches the transcript. Whatever is held back
+                    # is flushed below once the stream ends.
+                    safe = visible[:-_TAG_HOLDBACK] if len(visible) > _TAG_HOLDBACK else ""
+                    if len(safe) > yielded_up_to:
+                        yield {"type": "token", "text": safe[yielded_up_to:]}
+                        yielded_up_to = len(safe)
+            except Exception as exc:
+                audit_log("agent.final_answer", status="error",
+                          input_summary=user_msg, detail={"error": str(exc)})
+            visible = self._visible_answer(buffer)
+            if len(visible) > yielded_up_to:
+                yield {"type": "token", "text": visible[yielded_up_to:]}
+            full_answer = _strip_tool_artifacts(visible).strip()
+            if not full_answer:
+                full_answer = "[stopped: tool hop limit reached]"
+                yield {"type": "token", "text": "\n" + full_answer}
 
         rendered = self._rendered_blocks(stream_results)
         if rendered:
